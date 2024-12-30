@@ -1,151 +1,148 @@
-# HADES (Heuristic Adaptive Data Extraction System)
+# HADES MCP Server
 
-HADES is a sophisticated system designed to perform intelligent data extraction and code generation using a combination of vector search (Milvus), graph database queries (Neo4j), and natural language processing.
+This repository contains a **Model Context Protocol (MCP) Server** (nicknamed “HADES”) that integrates:
 
-## Table of Contents
+- **ArangoDB** for document storage
+- **Milvus** for vector storage
+- **Pydantic** for configuration and validation
+- **Asyncio** and concurrency patterns to serve multiple clients
 
-1. [Project Overview](#project-overview)
-2. [System Architecture](#system-architecture)
-3. [Front-end Setup](#front-end-setup)
-4. [Back-end Setup](#back-end-setup)
-5. [Database Setup](#database-setup)
-6. [Docker Configuration](#docker-configuration)
-7. [Running the Application](#running-the-application)
-8. [Development Workflow](#development-workflow)
-9. [Troubleshooting](#troubleshooting)
+The server handles **search, query execution, and other operations** via a custom “tool” interface, enabling easy extension of capabilities.
 
-## Project Overview
+## 1. Environment Setup
 
-HADES combines the power of vector search, graph databases, and natural language processing to provide a versatile system for data extraction and code generation. It uses Milvus for efficient vector similarity search, Neo4j for complex graph queries, and a custom NLP model for understanding and generating code.
+Below is how you can create a fresh **Conda** environment for **Python 3.12** and install the necessary Python packages.
 
-## System Architecture
+1. **Create and activate** a new Conda environment:
 
-The HADES system consists of the following components:
-
-1. React Front-end
-2. Node.js Back-end
-3. Milvus Vector Database
-4. Neo4j Graph Database
-5. Docker for containerization and orchestration
-
-## Front-end Setup
-
-The front-end is built using React with TypeScript and Vite for fast development and building. It uses Tailwind CSS for styling and Lucide React for icons.
-
-### Key Files:
-
-- `src/App.tsx`: Main application component
-- `src/components/QueryInput.tsx`: Component for user input
-- `src/components/ResultDisplay.tsx`: Component for displaying query results
-- `src/utils/queryProcessor.ts`: Utility for processing queries
-- `src/index.css`: Global styles and Tailwind CSS configuration
-
-### Front-end Structure:
-
-The front-end follows a component-based architecture:
-
-- `App.tsx` serves as the main container, managing the overall layout and state.
-- `QueryInput` handles user input and query submission.
-- `ResultDisplay` renders the results returned from the back-end.
-- The `queryProcessor` utility handles communication with the back-end API.
-
-Styling is primarily done using Tailwind CSS classes, with some custom styles in `index.css` for scrollbar customization.
-
-## Back-end Setup
-
-The back-end is a Node.js application using Express.js for the web server. It interfaces with Milvus and Neo4j to process queries.
-
-### Key Files:
-
-- `server.js`: Main server file containing the Express application and route handlers
-
-### Back-end Structure:
-
-The `server.js` file sets up an Express server with the following features:
-
-- CORS middleware for handling cross-origin requests
-- JSON body parsing for processing request bodies
-- A POST route at `/query` for handling all query requests
-- Connections to Milvus and Neo4j databases
-- Error handling and response formatting
-
-The server determines the type of query (Milvus, Neo4j, or code generation) based on the input and delegates to the appropriate service.
-
-## Database Setup
-
-### Milvus:
-
-Milvus is used for vector similarity search. In the current setup, it's configured with:
-
-- Etcd for metadata storage
-- MinIO for object storage
-
-### Neo4j:
-
-Neo4j is used for graph database queries. It's set up with basic authentication in this development environment.
-
-## Docker Configuration
-
-The project uses Docker for containerization and Docker Compose for orchestrating the multi-container application.
-
-### Key Files:
-
-- `Dockerfile.frontend`: Dockerfile for building the front-end container
-- `Dockerfile.backend`: Dockerfile for building the back-end container
-- `docker-compose.yml`: Docker Compose configuration for all services
-
-### Docker Compose Services:
-
-1. `frontend`: React application
-2. `backend`: Node.js server
-3. `milvus`: Milvus vector database
-4. `etcd`: Distributed key-value store for Milvus
-5. `minio`: Object storage for Milvus
-6. `neo4j`: Neo4j graph database
-
-## Running the Application
-
-To run the application:
-
-1. Ensure Docker and Docker Compose are installed on your system.
-2. Navigate to the project root directory.
-3. Run the following command:
-
-   ```
-   docker-compose up --build
+   ```bash
+   conda create -n hades python=3.12 -y
+   conda activate hades
    ```
 
-4. Access the application at `http://localhost:5173` in your web browser.
+2. **Upgrade build tools** (helps avoid build issues on new Python versions):
 
-## Development Workflow
+   ```bash
+   pip install --upgrade pip setuptools wheel
+   ```
 
-1. Front-end development:
-   - Make changes to React components in the `src` directory.
-   - The Vite dev server will automatically reload changes.
+3. **Install project requirements**:
 
-2. Back-end development:
-   - Modify `server.js` for API changes.
-   - Restart the backend container to apply changes:
-     ```
-     docker-compose restart backend
-     ```
+   ```bash
+   # Inside your hades environment
+   pip install -r requirements.txt
+   ```
 
-3. Database modifications:
-   - For significant changes to Milvus or Neo4j, update the respective sections in `docker-compose.yml`.
-   - Rebuild and restart the affected services:
-     ```
-     docker-compose up -d --build <service_name>
-     ```
+Your `requirements.txt` might look like:
 
-## Troubleshooting
+```text
+pydantic
+pydantic-settings
+arango
+pymilvus
+mcp
+```
 
-- If the front-end can't connect to the back-end, ensure the `VITE_API_URL` in `docker-compose.yml` is correct.
-- For database connection issues, check the connection strings in `server.js` and ensure the database services are running.
-- To view logs for a specific service:
+> **Note:**  
+>
+> - The `mcp` package may be your internal or private library. Ensure you have access to it if it’s not on PyPI.  
+> - If `grpcio` or other native extensions fail to compile on Python 3.12, you may need to install them via conda-forge or use a specific version.
+
+## 2. Sample Docker Setup (ArangoDB & Milvus)
+
+Below is a minimal **Docker Compose** snippet to spin up **ArangoDB** and **Milvus** for local testing. It uses default ports and sets example passwords. **Do not** use these in production.
+
+```yaml
+version: "3.8"
+services:
+  arangodb:
+    image: arangodb:3.10
+    container_name: arangodb
+    ports:
+      - "8529:8529"
+    environment:
+      - ARANGO_ROOT_PASSWORD=p@$$W0rd
+
+  milvus:
+    image: milvusdb/milvus:2.3.0
+    container_name: milvus
+    ports:
+      - "19530:19530"
+    environment:
+      - MILVUS_USER=root
+      - MILVUS_PASSWORD=p@$$W0rd
+```
+
+**Steps**:
+
+1. Save the file above as `docker-compose.yml`.  
+2. Run `docker-compose up -d`.  
+3. ArangoDB will be available at `http://localhost:8529` (user: `root`, pass: `p@$$W0rd`).  
+4. Milvus will be listening on `localhost:19530` (user: `root`, pass: `p@$$W0rd`).  
+
+You can now connect your MCP server to these services by configuring environment variables (e.g., `ARANGO_URL`, `ARANGO_USER`, `ARANGO_PASSWORD`, `MILVUS_HOST`, `MILVUS_PORT`, etc.).
+
+## 3. Integrating with Your RAG Solution
+
+This MCP server **assumes** you already have a retrieval-augmented generation pipeline or an LLM-based application that needs:
+
+- Document queries from **ArangoDB**  
+- Vector similarity searches from **Milvus**  
+
+You can wire these services together by:
+
+1. **Setting environment variables** that point to your local or remote ArangoDB and Milvus instances.
+2. **Starting the MCP server** (e.g., `python HADES-MCP-Server.py`) or however your main entry script is named.  
+3. **Sending requests** from your RAG system to the MCP server’s endpoints or via stdio protocol (depending on how your tool calls are orchestrated).
+
+## 4. Usage
+
+Once your databases are up and this server is installed:
+
+1. **Run the MCP server**:
+
+   ```bash
+   python HADES-MCP-Server.py
+   ```
+
+   or whichever file provides the MCP server entry point.
+
+2. **Check logs** to see if the server connected successfully to ArangoDB and Milvus. By **default**, logs are sent to **stdout**. You’ll see output like:
+
+   ```text
+   2024-01-02 12:34:56 - VectorDBMCPServer - INFO - <module>:123 - Vector DB MCP Server running
+   2024-01-02 12:34:56 - VectorDBMCPServer - INFO - <module>:124 - Connected to ArangoDB: _system
+   2024-01-02 12:34:56 - VectorDBMCPServer - INFO - <module>:125 - Connected to Milvus: localhost:19530
+   ```
+
+   If you want to **redirect logs** to a file instead of stdout, modify the `logging.basicConfig(...)` call in your script to specify a `filename=...` parameter.
+
+3. **Send requests** from your RAG solution or any other client. For example:
+   - A tool call to `execute_query` for running an AQL query  
+   - A tool call to `hybrid_search` for vector+doc retrieval  
+
+## 5. Troubleshooting
+
+- If **grpcio** fails to install for Python 3.12, try:
+  - `pip install --upgrade pip setuptools wheel`  
+  - `pip install grpcio==<some-version>` that provides wheels for 3.12  
+  - Or `conda install grpcio -c conda-forge`
+
+- Check **Docker logs**:
+
+  ```bash
+  docker logs arangodb
+  docker logs milvus
   ```
-  docker-compose logs <service_name>
-  ```
 
-For more detailed troubleshooting, refer to the documentation of individual components (React, Express, Milvus, Neo4j).
+  to see if either service failed to start.
 
-[Edit in StackBlitz next generation editor ⚡️](https://stackblitz.com/~/github.com/r3d91ll/HADES)
+- Make sure **credentials** in your environment match those in the `docker-compose.yml`.
+
+## 6. License & Support
+
+This code is offered **as is**, with no explicit license or warranty implied. Please reach out to the repository owner or your internal support channels for assistance.
+
+---
+
+*Enjoy building your RAG workflows with the HADES MCP Server!*
