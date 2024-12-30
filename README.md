@@ -1,4 +1,4 @@
-# HADES MCP Server
+# Heuristic Adaptive Data Extraction System H.A.D.E.S. MCP Server
 
 This repository contains a **Model Context Protocol (MCP) Server** (nicknamed “HADES”) that integrates:
 
