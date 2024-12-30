@@ -22,18 +22,19 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from mcp import FastMCP, StdioServerParameters
+    from mcp.server.fastmcp.server import FastMCP
+    from mcp.client.stdio import StdioServerParameters
     from mcp.types import CallToolRequest, ListToolsRequest
 except ImportError as e:
-    logging.error("MCP import error: %s", e, exc_info=True)
-    sys.exit(1)
+    logging.error("MCP module import error: %s", e)
+    FastMCP = None  # Or handle it gracefully
 
 try:
     from arango import ArangoClient
     from pymilvus import connections, Collection, utility
 except ImportError as e:
-    logging.error("Database import error: %s", e, exc_info=True)
-    sys.exit(1)
+    logging.error("Failed to import ArangoClient: %s", e)
+    ArangoClient = None  # Assign a fallback or mock object for testing
 
 # Type variables for generics
 T = TypeVar('T')

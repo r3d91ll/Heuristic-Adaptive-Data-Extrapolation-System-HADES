@@ -1,5 +1,6 @@
-pydantic
+pydantic==2.10.1
 pydantic-settings
+pytest-asyncio
 arango
 pymilvus
-mcp==1.1.2
+

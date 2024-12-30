@@ -56,7 +56,7 @@ Below is a minimal **Docker Compose** snippet to spin up **ArangoDB** and **Milv
 version: "3.8"
 services:
   arangodb:
-    image: arangodb:3.10
+    image: arangodb:3.12
     container_name: arangodb
     ports:
       - "8529:8529"
