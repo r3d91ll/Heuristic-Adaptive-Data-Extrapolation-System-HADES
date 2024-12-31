@@ -166,7 +166,6 @@ class TestMCPError:
         assert error.details == {"detail": "test"}
         assert isinstance(error.timestamp, datetime)
 
-@pytest.mark.asyncio
 class TestConnectionManager:
     @pytest.fixture
     async def conn_manager(self):
@@ -247,6 +246,40 @@ class TestVectorDBMCPServer:
             server.conn_manager.get_db = AsyncMock()
             server.start_time = time.time()
             return server
+
+    async def test_handle_request(self, server):
+        request = MagicMock()
+        request_type = type(request)
+        handler_mock = AsyncMock(return_value="response")
+        server._handlers[request_type] = handler_mock
+        result = await server.handle_request(request)
+        assert result == "response"
+        handler_mock.assert_called_once_with(request)
+
+    async def test_handle_request_no_handler(self, server):
+        request = MagicMock()
+        with pytest.raises(MCPError) as exc_info:
+            await server.handle_request(request)
+        assert "REQUEST_TYPE_NOT_FOUND" in str(exc_info.value)
+
+    async def test_close(self, server):
+        await server.close()
+        server.conn_manager.close.assert_called_once()
+
+    async def test_handle_shutdown(self, server, monkeypatch):
+        mock_signal_handler = MagicMock()
+        monkeypatch.setattr(signal, 'signal', mock_signal_handler)
+        server._handle_shutdown(15, None)
+        server.close.assert_called_once()
+        assert mock_signal_handler.call_count == 2
+
+    async def test_run(self, server, monkeypatch):
+        mock_transport = MagicMock()
+        mock_connect = AsyncMock()
+        mock_transport.connect = mock_connect
+        with patch('HADES_MCP_Server.StdioServerParameters', return_value=mock_transport):
+            await server.run()
+            mock_connect.assert_called_once()
 
     async def test_execute_query(self, server):
         mock_db = MagicMock()
@@ -455,6 +488,60 @@ class TestVectorDBMCPServer:
         assert result["connections"]["arango"]
         assert not result["connections"]["milvus"]
         assert "Milvus Error" in result["errors"]["milvus"]
+
+    async def test_annotation_to_json_schema(self, server):
+        schema = server._annotation_to_json_schema(str)
+        assert schema == {"type": "string"}
+
+        schema = server._annotation_to_json_schema(int)
+        assert schema == {"type": "number", "multipleOf": 1}
+
+        schema = server._annotation_to_json_schema(float)
+        assert schema == {"type": "number"}
+
+        schema = server._annotation_to_json_schema(bool)
+        assert schema == {"type": "boolean"}
+
+        schema = server._annotation_to_json_schema(List[float])
+        assert schema == {
+            "type": "array",
+            "items": {"type": "number"}
+        }
+
+        schema = server._annotation_to_json_schema(Dict[str, Any])
+        assert schema == {
+            "type": "object",
+            "additionalProperties": True
+        }
+
+    async def test_get_tool_schema(self, server):
+        class TestTool:
+            @mcp_tool("Test tool description")
+            async def test_method(self, arg1: str, arg2: int = 42) -> None:
+                pass
+
+        schema = server._get_tool_schema(TestTool.test_method)
+        assert schema == {
+            "type": "object",
+            "properties": {
+                "arg1": {"type": "string"},
+                "arg2": {"type": "number", "multipleOf": 1}
+            },
+            "required": ["arg1"]
+        }
+
+    async def test_register_tools(self, server):
+        class TestTool:
+            @mcp_tool("Test tool description")
+            async def test_method(self, arg1: str, arg2: int = 42) -> None:
+                pass
+
+        with patch.object(server, 'tools', {}), \
+             patch.object(server, '_tool_schemas_cache', {}):
+            server._register_tools()
+            assert "test_method" in server.tools
+            assert server.tools["test_method"]["description"] == "Test tool description"
+            assert server.tools["test_method"]["handler"] is TestTool.test_method
 
 if __name__ == "__main__":
     pytest.main()

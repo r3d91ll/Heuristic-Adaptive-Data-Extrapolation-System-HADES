@@ -11,7 +11,7 @@ import functools
 from typing import Any, Dict, List, Optional, Callable, TypeVar, cast, Union
 from concurrent.futures import ThreadPoolExecutor
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 
 try:
@@ -294,7 +294,7 @@ class MCPError(Exception):
     ):
         self.code = code
         self.message = message
-        self.timestamp = datetime.utcnow()
+        self.timestamp = datetime.now(timezone.utc)
         self.details = details or {}
         super().__init__(message)
 
