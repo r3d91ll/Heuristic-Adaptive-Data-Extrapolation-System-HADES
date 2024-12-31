@@ -209,7 +209,11 @@ class ServerConfig(BaseSettings):
 
 class QueryArgs(BaseModel):
     """Arguments for AQL query execution."""
-    query: str = Field(..., description="AQL query string")
+    query: str = Field(
+        ...,
+        description="AQL query string",
+        json_schema_extra={"env": "QUERY_ENV"}
+    )
     bind_vars: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Query bind variables"
@@ -240,10 +244,28 @@ class QueryArgs(BaseModel):
 
 class VectorSearchArgs(BaseModel):
     """Arguments for vector similarity search."""
-    collection: str = Field(..., description="Milvus collection name")
-    vector: List[float] = Field(..., description="Query vector")
-    limit: int = Field(default=5, ge=1, le=100, description="Maximum number of results")
-    filters: Optional[str] = Field(default=None, description="Optional Milvus filter expression")
+    collection: str = Field(
+        ...,
+        description="Milvus collection name",
+        json_schema_extra={"env": "MILVUS_COLLECTION_ENV"}
+    )
+    vector: List[float] = Field(
+        ...,
+        description="Query vector",
+        json_schema_extra={"env": "VECTOR_ENV"}
+    )
+    limit: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description="Maximum number of results",
+        json_schema_extra={"env": "LIMIT_ENV"}
+    )
+    filters: Optional[str] = Field(
+        default=None,
+        description="Optional Milvus filter expression",
+        json_schema_extra={"env": "FILTERS_ENV"}
+    )
 
     model_config = {
         'extra': 'forbid'
@@ -270,14 +292,37 @@ class VectorSearchArgs(BaseModel):
 
 class HybridSearchArgs(BaseModel):
     """Arguments for hybrid search across vector and document stores."""
-    milvus_collection: str = Field(..., description="Milvus collection for vector search")
-    arango_collection: str = Field(..., description="ArangoDB collection for document data")
-    query_text: str = Field(..., description="Search query text")
-    vector: List[float] = Field(..., description="Query vector for similarity search")
-    limit: int = Field(default=5, ge=1, le=100)
+    milvus_collection: str = Field(
+        ...,
+        description="Milvus collection for vector search",
+        json_schema_extra={"env": "MILVUS_COLLECTION_ENV"}
+    )
+    arango_collection: str = Field(
+        ...,
+        description="ArangoDB collection for document data",
+        json_schema_extra={"env": "ARANGO_COLLECTION_ENV"}
+    )
+    query_text: str = Field(
+        ...,
+        description="Search query text",
+        json_schema_extra={"env": "QUERY_TEXT_ENV"}
+    )
+    vector: List[float] = Field(
+        ...,
+        description="Query vector for similarity search",
+        json_schema_extra={"env": "VECTOR_ENV"}
+    )
+    limit: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description="Maximum number of results",
+        json_schema_extra={"env": "LIMIT_ENV"}
+    )
     filters: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Optional ArangoDB filters"
+        description="Optional ArangoDB filters",
+        json_schema_extra={"env": "FILTERS_ENV"}
     )
 
     model_config = {
@@ -805,6 +850,16 @@ class VectorDBMCPServer(FastMCP):
         logger.info("Received signal %d, initiating shutdown...", signum)
         self.close()
         sys.exit(0)
+
+    def connect(self, transport):
+        """Connect the server to the specified transport."""
+        try:
+            self.transport = transport
+            self.start_time = time.time()
+            # self.run_forever()
+        except Exception as e:
+            logger.error("Server connection failed: %s", e, exc_info=True)
+            sys.exit(1)
 
     def run(self) -> None:
         """Start the server with stdio transport."""
