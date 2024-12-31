@@ -15,7 +15,7 @@ from datetime import datetime
 import asyncio
 
 try:
-    from pydantic import BaseModel, Field, validator, ValidationError
+    from pydantic import BaseModel, Field, validator, ValidationError, field_validator
     from pydantic_settings import BaseSettings
 except ImportError as e:
     logging.error("Pydantic import error: %s", e, exc_info=True)
@@ -30,11 +30,18 @@ except ImportError as e:
     FastMCP = None  # Or handle it gracefully
 
 try:
+    import pymilvus
+    from pymilvus import connections
+except ImportError:
+    pymilvus = None
+    connections = None
+
+try:
     from arango import ArangoClient
-    from pymilvus import connections, Collection, utility
-except ImportError as e:
-    logging.error("Failed to import ArangoClient: %s", e)
-    ArangoClient = None  # Assign a fallback or mock object for testing
+except ImportError:
+    class ArangoClient:  # Provide a dummy class
+        def __init__(self, *args, **kwargs):
+            pass
 
 # Type variables for generics
 T = TypeVar('T')
@@ -68,79 +75,137 @@ class DatabaseConfig(BaseSettings):
         env="ARANGO_PASSWORD",
         description="ArangoDB password"
     )
+    container_name: str = Field(
+        default="hades_arangodb",
+        env="ARANGO_CONTAINER_NAME",
+        description="ArangoDB container name"
+    )
+    port: int = Field(
+        default=8529,
+        env="ARANGO_PORT",
+        description="ArangoDB port number"
+    )
+    root_password: str = Field(
+        default="your_secure_password",
+        env="ARANGO_ROOT_PASSWORD",
+        description="ArangoDB root password"
+    )
+    data_volume: str = Field(
+        default="hades_arango_data",
+        env="ARANGO_DATA_VOLUME",
+        description="ArangoDB data volume name"
+    )
+    apps_volume: str = Field(
+        default="hades_arango_apps",
+        env="ARANGO_APPS_VOLUME",
+        description="ArangoDB apps volume name"
+    )
 
-    class Config:
-        env_file = '.env'
-        case_sensitive = False
+    model_config = {
+        'env_file': '.env',
+        'case_sensitive': False,
+        'extra': 'allow',
+        'env_prefix': '',
+        'env_nested_delimiter': '__'
+    }
 
 class MilvusConfig(BaseSettings):
     """Configuration for Milvus connection."""
     host: str = Field(
         default="localhost",
         env="MILVUS_HOST",
-        description="Milvus host address"
+        description="Milvus host"
     )
     port: int = Field(
         default=19530,
         env="MILVUS_PORT",
-        description="Milvus port number"
+        description="Milvus port"
     )
     username: str = Field(
-        default="",
+        default="root",
         env="MILVUS_USER",
         description="Milvus username"
     )
     password: str = Field(
-        default="",
+        default="your_secure_password",
         env="MILVUS_PASSWORD",
         description="Milvus password"
     )
+    container_name: str = Field(
+        default="hades_milvus",
+        env="MILVUS_CONTAINER_NAME",
+        description="Milvus container name"
+    )
+    data_volume: str = Field(
+        default="hades_milvus_data",
+        env="MILVUS_DATA_VOLUME",
+        description="Milvus data volume name"
+    )
 
-    @validator('port')
-    # pylint: disable=no-self-argument
-    def validate_port(cls, v: int) -> int:
-        """
-        Validate that the port number is within valid range.
-        
-        Args:
-            cls: Class reference (automatically injected by Pydantic)
-            v: Port number to validate
-            
-        Returns:
-            Valid port number
-            
-        Raises:
-            ValueError: If port number is not between 1 and 65535
-        """
+    model_config = {
+        'env_file': '.env',
+        'case_sensitive': False,
+        'extra': 'allow',
+        'env_prefix': '',
+        'env_nested_delimiter': '__'
+    }
+
+    @field_validator('port')
+    def validate_port(cls, v):
         if not 1 <= v <= 65535:
             raise ValueError("Port must be between 1 and 65535")
         return v
 
-    class Config:
-        env_file = '.env'
-        case_sensitive = False
-
 class ServerConfig(BaseSettings):
-    """Server-specific configuration."""
+    """Configuration for server settings."""
     thread_pool_size: int = Field(
         default=5,
         env="SERVER_THREAD_POOL_SIZE",
-        description="Size of the thread pool for blocking operations"
+        description="Thread pool size"
     )
     max_concurrent_requests: int = Field(
         default=100,
         env="SERVER_MAX_CONCURRENT_REQUESTS",
-        description="Maximum number of concurrent requests"
+        description="Maximum concurrent requests"
     )
     request_timeout: float = Field(
         default=30.0,
         env="SERVER_REQUEST_TIMEOUT",
         description="Request timeout in seconds"
     )
+    etcd_container_name: str = Field(
+        default="hades_etcd",
+        env="ETCD_CONTAINER_NAME",
+        description="ETCD container name"
+    )
+    minio_container_name: str = Field(
+        default="hades_minio",
+        env="MINIO_CONTAINER_NAME",
+        description="MinIO container name"
+    )
+    etcd_data_volume: str = Field(
+        default="hades_etcd_data",
+        env="ETCD_DATA_VOLUME",
+        description="ETCD data volume name"
+    )
+    minio_data_volume: str = Field(
+        default="hades_minio_data",
+        env="MINIO_DATA_VOLUME",
+        description="MinIO data volume name"
+    )
+    docker_network_name: str = Field(
+        default="hades_network",
+        env="DOCKER_NETWORK_NAME",
+        description="Docker network name"
+    )
 
-    class Config:
-        env_file = '.env'
-        case_sensitive = False
+    model_config = {
+        'env_file': '.env',
+        'case_sensitive': False,
+        'extra': 'allow',
+        'env_prefix': '',
+        'env_nested_delimiter': '__'
+    }
 
 class QueryArgs(BaseModel):
     """Arguments for AQL query execution."""
@@ -150,7 +215,11 @@ class QueryArgs(BaseModel):
         description="Query bind variables"
     )
 
-    @validator('query')
+    model_config = {
+        'extra': 'forbid'
+    }
+
+    @field_validator('query')
     def validate_query(cls, v: str) -> str:
         """
         Validate the query string.
@@ -165,8 +234,8 @@ class QueryArgs(BaseModel):
         Raises:
             ValueError: If the query is empty or contains only whitespace
         """
-        if not v.strip():
-            raise ValueError("Query cannot be empty")
+        if not v or not v.strip():
+            raise ValueError("Query string cannot be empty")
         return v
 
 class VectorSearchArgs(BaseModel):
@@ -174,9 +243,13 @@ class VectorSearchArgs(BaseModel):
     collection: str = Field(..., description="Milvus collection name")
     vector: List[float] = Field(..., description="Query vector")
     limit: int = Field(default=5, ge=1, le=100, description="Maximum number of results")
-    filter: Optional[str] = Field(default=None, description="Optional Milvus filter expression")
+    filters: Optional[str] = Field(default=None, description="Optional Milvus filter expression")
 
-    @validator('vector')
+    model_config = {
+        'extra': 'forbid'
+    }
+
+    @field_validator('vector')
     def validate_vector(cls, v: List[float]) -> List[float]:
         """
         Validate the vector parameter for vector search.
@@ -200,11 +273,16 @@ class HybridSearchArgs(BaseModel):
     milvus_collection: str = Field(..., description="Milvus collection for vector search")
     arango_collection: str = Field(..., description="ArangoDB collection for document data")
     query_text: str = Field(..., description="Search query text")
+    vector: List[float] = Field(..., description="Query vector for similarity search")
     limit: int = Field(default=5, ge=1, le=100)
     filters: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Optional ArangoDB filters"
     )
+
+    model_config = {
+        'extra': 'forbid'
+    }
 
 class MCPError(Exception):
     """Custom exception for MCP-related errors."""
@@ -371,6 +449,34 @@ class VectorDBMCPServer(FastMCP):
         
         logger.info("Registered %d tools: %s", len(self.tools), list(self.tools.keys()))
 
+    def register_handler(self, request_type, handler):
+        """
+        Register a request handler for the given request type.
+        
+        Args:
+            request_type: Type of the request to handle (e.g., ListToolsRequest)
+            handler: Callable that handles the request
+        """
+        if not hasattr(self, '_handlers'):
+            self._handlers = {}
+        self._handlers[request_type] = handler
+
+    def handle_request(self, request):
+        """
+        Handle an incoming request using the registered handlers.
+        
+        Args:
+            request: The request object to handle
+            
+        Returns:
+            Response from the handler or error if no handler is found
+        """
+        handler = self._handlers.get(type(request))
+        if handler:
+            return handler(request)
+        else:
+            raise MCPError("REQUEST_TYPE_NOT_FOUND", f"No handler registered for {type(request)}")
+
     @staticmethod
     def _get_tool_schema(func: Callable) -> Dict[str, Any]:
         """
@@ -487,7 +593,7 @@ class VectorDBMCPServer(FastMCP):
             await self.conn_manager.ensure_milvus()
             
             # Vector search implementation
-            collection = Collection(args.milvus_collection)
+            collection = pymilvus.Collection(args.milvus_collection)
             search_params = {
                 "metric_type": "L2",
                 "params": {"nprobe": 10},
@@ -499,7 +605,7 @@ class VectorDBMCPServer(FastMCP):
                 anns_field="embedding",
                 param=search_params,
                 limit=args.limit,
-                expr=args.filter if args.filter else None
+                expr=None  # We'll handle filtering in ArangoDB
             )
             
             # Extract document IDs from vector search results
@@ -589,17 +695,22 @@ class VectorDBMCPServer(FastMCP):
             
             # Validate arguments using tool's schema
             try:
-                schema_model = tool["schema"].get("pydantic_model")
+                schema_model = tool.get("pydantic_model")
                 if schema_model:
                     validated_args = schema_model.model_validate(request.params.arguments)
                 else:
                     validated_args = request.params.arguments
             except ValidationError as e:
-                raise MCPError(
-                    "VALIDATION_ERROR",
-                    "Invalid arguments",
-                    {"details": e.errors()}
-                )
+                logger.error("Validation error in %s: %s", request_id, e)
+                return {
+                    "success": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Invalid arguments",
+                        "details": e.errors()
+                    },
+                    "request_id": request_id
+                }
 
             # Execute tool with timeout
             try:

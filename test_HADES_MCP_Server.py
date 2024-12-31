@@ -1,7 +1,9 @@
-import unittest
-import os
+import pytest
+from unittest.mock import patch, MagicMock, AsyncMock
 import asyncio
-from unittest.mock import patch, MagicMock
+import time
+from datetime import datetime, UTC
+from pydantic import ValidationError, BaseModel, Field
 from HADES_MCP_Server import (
     DatabaseConfig,
     MilvusConfig,
@@ -14,296 +16,445 @@ from HADES_MCP_Server import (
     MCPError
 )
 
-class TestDatabaseConfig(unittest.TestCase):
+@pytest.fixture
+def env_setup(monkeypatch):
+    def _env_setup(env_vars):
+        for key, value in env_vars.items():
+            monkeypatch.setenv(key, str(value))
+    return _env_setup
+
+class TestDatabaseConfig:
     def test_default_values(self):
-        config = DatabaseConfig(url="http://localhost:8529", database="_system", username="root", password="")
-        self.assertEqual(config.url, "http://localhost:8529")
-        self.assertEqual(config.database, "_system")
-        self.assertEqual(config.username, "root")
-        self.assertEqual(config.password, "")
+        config = DatabaseConfig()
+        assert config.url == "http://localhost:8529"
+        assert config.database == "_system"
+        assert config.username == "root"
+        assert config.password == ""
+        assert config.container_name == "hades_arangodb"
+        assert config.port == 8529
+        assert config.root_password == "your_secure_password"
+        assert config.data_volume == "hades_arango_data"
+        assert config.apps_volume == "hades_arango_apps"
 
-    @patch.dict(os.environ, {"ARANGO_URL": "http://test-url", "ARANGO_DB": "test-db", "ARANGO_USER": "test-user", "ARANGO_PASSWORD": "test-password"})
-    def test_env_values(self):
-        config = DatabaseConfig(url=os.getenv("ARANGO_URL"), database=os.getenv("ARANGO_DB"), username=os.getenv("ARANGO_USER"), password=os.getenv("ARANGO_PASSWORD"))
-        self.assertEqual(config.url, os.getenv("ARANGO_URL"))
-        self.assertEqual(config.database, os.getenv("ARANGO_DB"))
-        self.assertEqual(config.username, os.getenv("ARANGO_USER"))
-        self.assertEqual(config.password, os.getenv("ARANGO_PASSWORD"))
+    def test_env_values(self, env_setup):
+        env_setup({
+            "url": "http://test-url",
+            "database": "test-db",
+            "username": "test-user",
+            "password": "test-password",
+            "container_name": "test-container",
+            "port": "8529",
+            "root_password": "test-root-password",
+            "data_volume": "test-data-volume",
+            "apps_volume": "test-apps-volume"
+        })
+        config = DatabaseConfig(_env_file=None)
+        assert config.url == "http://test-url"
+        assert config.database == "test-db"
+        assert config.username == "test-user"
+        assert config.password == "test-password"
+        assert config.container_name == "test-container"
+        assert config.port == 8529
+        assert config.root_password == "test-root-password"
+        assert config.data_volume == "test-data-volume"
+        assert config.apps_volume == "test-apps-volume"
 
-class TestMilvusConfig(unittest.TestCase):
+class TestMilvusConfig:
     def test_default_values(self):
-        config = MilvusConfig(host="localhost", port=19530, username="", password="")
-        self.assertEqual(config.host, "localhost")
-        self.assertEqual(config.port, 19530)
-        self.assertEqual(config.username, "")
-        self.assertEqual(config.password, "")
+        config = MilvusConfig()
+        assert config.host == "localhost"
+        assert config.port == 19530
+        assert config.username == "root"
+        assert config.password == "your_secure_password"
+        assert config.container_name == "hades_milvus"
+        assert config.data_volume == "hades_milvus_data"
 
-    @patch.dict(os.environ, {"MILVUS_HOST": "test-host", "MILVUS_PORT": "12345", "MILVUS_USER": "test-user", "MILVUS_PASSWORD": "test-password"})
-    def test_env_values(self):
-        config = MilvusConfig(host=os.getenv("MILVUS_HOST"), port=int(os.getenv("MILVUS_PORT")), username=os.getenv("MILVUS_USER"), password=os.getenv("MILVUS_PASSWORD"))
-        self.assertEqual(config.host, os.getenv("MILVUS_HOST"))
-        self.assertEqual(config.port, int(os.getenv("MILVUS_PORT")))
-        self.assertEqual(config.username, os.getenv("MILVUS_USER"))
-        self.assertEqual(config.password, os.getenv("MILVUS_PASSWORD"))
+    def test_env_values(self, env_setup):
+        env_setup({
+            "host": "test-host",
+            "port": "19531",
+            "username": "test-user",
+            "password": "test-password",
+            "container_name": "test-milvus",
+            "data_volume": "test-milvus-data"
+        })
+        config = MilvusConfig(_env_file=None)
+        assert config.host == "test-host"
+        assert config.port == 19531
+        assert config.username == "test-user"
+        assert config.password == "test-password"
+        assert config.container_name == "test-milvus"
+        assert config.data_volume == "test-milvus-data"
 
     def test_invalid_port(self):
-        with self.assertRaises(ValueError) as context:
+        with pytest.raises(ValueError) as exc_info:
             MilvusConfig(port=65536)
-        self.assertIn("Port must be between 1 and 65535", str(context.exception))
+        assert "Port must be between 1 and 65535" in str(exc_info.value)
 
-class TestServerConfig(unittest.TestCase):
+class TestServerConfig:
     def test_default_values(self):
-        config = ServerConfig(thread_pool_size=5, max_concurrent_requests=100, request_timeout=30.0)
-        self.assertEqual(config.thread_pool_size, 5)
-        self.assertEqual(config.max_concurrent_requests, 100)
-        self.assertEqual(config.request_timeout, 30.0)
+        config = ServerConfig()
+        assert config.thread_pool_size == 5
+        assert config.max_concurrent_requests == 100
+        assert config.request_timeout == 30.0
+        assert config.etcd_container_name == "hades_etcd"
+        assert config.minio_container_name == "hades_minio"
+        assert config.etcd_data_volume == "hades_etcd_data"
+        assert config.minio_data_volume == "hades_minio_data"
+        assert config.docker_network_name == "hades_network"
 
-    @patch.dict(os.environ, {"SERVER_THREAD_POOL_SIZE": "10", "SERVER_MAX_CONCURRENT_REQUESTS": "200", "SERVER_REQUEST_TIMEOUT": "60.0"})
-    def test_env_values(self):
-        config = ServerConfig(thread_pool_size=int(os.getenv("SERVER_THREAD_POOL_SIZE")), max_concurrent_requests=int(os.getenv("SERVER_MAX_CONCURRENT_REQUESTS")), request_timeout=float(os.getenv("SERVER_REQUEST_TIMEOUT")))
-        self.assertEqual(config.thread_pool_size, int(os.getenv("SERVER_THREAD_POOL_SIZE")))
-        self.assertEqual(config.max_concurrent_requests, int(os.getenv("SERVER_MAX_CONCURRENT_REQUESTS")))
-        self.assertEqual(config.request_timeout, float(os.getenv("SERVER_REQUEST_TIMEOUT")))
+    def test_env_values(self, env_setup):
+        env_setup({
+            "thread_pool_size": "10",
+            "max_concurrent_requests": "200",
+            "request_timeout": "60.0",
+            "etcd_container_name": "test-etcd",
+            "minio_container_name": "test-minio",
+            "etcd_data_volume": "test-etcd-data",
+            "minio_data_volume": "test-minio-data",
+            "docker_network_name": "test-network"
+        })
+        config = ServerConfig(_env_file=None)
+        assert config.thread_pool_size == 10
+        assert config.max_concurrent_requests == 200
+        assert config.request_timeout == 60.0
+        assert config.etcd_container_name == "test-etcd"
+        assert config.minio_container_name == "test-minio"
+        assert config.etcd_data_volume == "test-etcd-data"
+        assert config.minio_data_volume == "test-minio-data"
+        assert config.docker_network_name == "test-network"
 
-class TestQueryArgs(unittest.TestCase):
+class TestQueryArgs:
     def test_valid_query(self):
         args = QueryArgs(query="FOR doc IN collection RETURN doc")
-        self.assertEqual(args.query, "FOR doc IN collection RETURN doc")
+        assert args.query == "FOR doc IN collection RETURN doc"
 
     def test_invalid_query(self):
-        with self.assertRaises(ValueError) as context:
+        with pytest.raises(ValueError) as exc_info:
             QueryArgs(query="")
-        self.assertIn("Query cannot be empty", str(context.exception))
+        assert "Query string cannot be empty" in str(exc_info.value)
 
-class TestVectorSearchArgs(unittest.TestCase):
+class TestVectorSearchArgs:
     def test_valid_vector_search_args(self):
         args = VectorSearchArgs(collection="test_collection", vector=[1.0, 2.0, 3.0])
-        self.assertEqual(args.collection, "test_collection")
-        self.assertEqual(args.vector, [1.0, 2.0, 3.0])
+        assert args.collection == "test_collection"
+        assert args.vector == [1.0, 2.0, 3.0]
 
     def test_invalid_vector_search_args(self):
-        with self.assertRaises(ValueError) as context:
+        with pytest.raises(ValueError) as exc_info:
             VectorSearchArgs(collection="test_collection", vector=[])
-        self.assertIn("Vector cannot be empty", str(context.exception))
+        assert "Vector cannot be empty" in str(exc_info.value)
 
-class TestHybridSearchArgs(unittest.TestCase):
+class TestHybridSearchArgs:
     def test_valid_hybrid_search_args(self):
-        args = HybridSearchArgs(milvus_collection="milvus_test", arango_collection="arango_test", query_text="test_query")
-        self.assertEqual(args.milvus_collection, "milvus_test")
-        self.assertEqual(args.arango_collection, "arango_test")
-        self.assertEqual(args.query_text, "test_query")
-
-class TestConnectionManager(unittest.TestCase):
-    @patch('HADES_MCP_Server.ArangoClient')
-    @patch('HADES_MCP_Server.connections.connect')
-    async def test_get_db(self, mock_connect, mock_arango_client):
-        db_config = DatabaseConfig()
-        milvus_config = MilvusConfig()
-        conn_manager = ConnectionManager(db_config, milvus_config)
-        
-        mock_arango_client.return_value.db.return_value = "mock_db"
-        result = await conn_manager.get_db()
-        self.assertEqual(result, "mock_db")
-
-    @patch('HADES_MCP_Server.connections.connect')
-    async def test_ensure_milvus(self, mock_connect):
-        db_config = DatabaseConfig()
-        milvus_config = MilvusConfig()
-        conn_manager = ConnectionManager(db_config, milvus_config)
-        
-        await conn_manager.ensure_milvus()
-        mock_connect.assert_called_once_with(
-            alias="default",
-            host=milvus_config.host,
-            port=milvus_config.port,
-            user=milvus_config.username,
-            password=milvus_config.password
+        args = HybridSearchArgs(
+            milvus_collection="milvus_test",
+            arango_collection="arango_test",
+            query_text="test_query",
+            vector=[1.0, 2.0, 3.0]
         )
+        assert args.milvus_collection == "milvus_test"
+        assert args.arango_collection == "arango_test"
+        assert args.query_text == "test_query"
+        assert args.vector == [1.0, 2.0, 3.0]
 
-    @patch('HADES_MCP_Server.ArangoClient')
-    @patch('HADES_MCP_Server.connections.connect')
-    async def test_close(self, mock_connect, mock_arango_client):
+class TestMCPError:
+    def test_mcp_error_creation(self):
+        error = MCPError("TEST_ERROR", "Test message", {"detail": "test"})
+        assert error.code == "TEST_ERROR"
+        assert error.message == "Test message"
+        assert error.details == {"detail": "test"}
+        assert isinstance(error.timestamp, datetime)
+
+@pytest.mark.asyncio
+class TestConnectionManager:
+    @pytest.fixture
+    async def conn_manager(self):
         db_config = DatabaseConfig()
         milvus_config = MilvusConfig()
-        conn_manager = ConnectionManager(db_config, milvus_config)
-        
-        await conn_manager.get_db()
-        await conn_manager.ensure_milvus()
-        conn_manager.close()
-        mock_arango_client.return_value.close.assert_called_once()
-        mock_connect.assert_called_once_with(
-            alias="default",
-            host=milvus_config.host,
-            port=milvus_config.port,
-            user=milvus_config.username,
-            password=milvus_config.password
-        )
+        return ConnectionManager(db_config, milvus_config)
 
-    @patch('HADES_MCP_Server.ArangoClient')
-    @patch('HADES_MCP_Server.connections.connect', side_effect=Exception("Connection failed"))
-    async def test_get_db_retry(self, mock_connect, mock_arango_client):
-        db_config = DatabaseConfig()
-        milvus_config = MilvusConfig()
-        conn_manager = ConnectionManager(db_config, milvus_config)
+    @pytest.fixture
+    def mock_arango_client(self, monkeypatch):
+        mock_client = MagicMock()
+        mock_db = MagicMock()
+        mock_client.db.return_value = mock_db
         
-        with self.assertRaises(MCPError) as context:
-            await conn_manager.get_db()
-        self.assertIn("Failed to connect to ArangoDB", str(context.exception))
+        def mock_client_constructor(*args, **kwargs):
+            return mock_client
+            
+        monkeypatch.setattr('HADES_MCP_Server.ArangoClient', mock_client_constructor)
+        return mock_client, mock_db
 
-    @patch('HADES_MCP_Server.connections.connect', side_effect=Exception("Connection failed"))
-    async def test_ensure_milvus_retry(self, mock_connect):
-        db_config = DatabaseConfig()
-        milvus_config = MilvusConfig()
-        conn_manager = ConnectionManager(db_config, milvus_config)
-        
-        with self.assertRaises(MCPError) as context:
+    async def test_ensure_milvus(self, conn_manager):
+        with patch('HADES_MCP_Server.connections') as mock_connections:
             await conn_manager.ensure_milvus()
-        self.assertIn("Failed to connect to Milvus", str(context.exception))
+            mock_connections.connect.assert_called_once()
 
-class TestVectorDBMCPServer(unittest.TestCase):
-    @patch('HADES_MCP_Server.DatabaseConfig')
-    @patch('HADES_MCP_Server.MilvusConfig')
-    @patch('HADES_MCP_Server.ServerConfig')
-    def setUp(self, mock_server_config, mock_milvus_config, mock_db_config):
-        self.db_config = mock_db_config.return_value
-        self.milvus_config = mock_milvus_config.return_value
-        self.server_config = mock_server_config.return_value
+    async def test_get_db(self, conn_manager, mock_arango_client):
+        mock_client, mock_db = mock_arango_client
+        result = await conn_manager.get_db()
+        assert result == mock_db
+        mock_client.db.assert_called_once()
+
+    async def test_get_db_retry_success(self, conn_manager, mock_arango_client):
+        mock_client, mock_db = mock_arango_client
+        mock_client.db.side_effect = [Exception("First try"), mock_db]
+        result = await conn_manager.get_db()
+        assert result == mock_db
+        assert mock_client.db.call_count == 2
+
+    async def test_get_db_all_retries_fail(self, conn_manager, mock_arango_client):
+        mock_client, _ = mock_arango_client
+        mock_client.db.side_effect = Exception("Connection failed")
+        with pytest.raises(MCPError) as exc_info:
+            await conn_manager.get_db()
+        assert "Failed to connect to ArangoDB" in str(exc_info.value)
+
+    async def test_ensure_milvus_retry_success(self, conn_manager):
+        with patch('HADES_MCP_Server.connections') as mock_connections:
+            mock_connections.connect.side_effect = [Exception("First try"), None]
+            await conn_manager.ensure_milvus()
+            assert mock_connections.connect.call_count == 2
+
+    async def test_ensure_milvus_all_retries_fail(self, conn_manager):
+        with patch('HADES_MCP_Server.connections') as mock_connections:
+            mock_connections.connect.side_effect = Exception("Connection failed")
+            with pytest.raises(MCPError) as exc_info:
+                await conn_manager.ensure_milvus()
+            assert "Failed to connect to Milvus" in str(exc_info.value)
+
+    def test_close(self, conn_manager):
+        mock_client = MagicMock()
+        conn_manager._client = mock_client
+        conn_manager._milvus_connected = True
         
-        # Ensure ServerConfig returns a valid integer for thread_pool_size
-        self.server_config.thread_pool_size = 5
-        self.conn_manager = ConnectionManager(self.db_config, self.milvus_config)
-        self.server = VectorDBMCPServer()
+        with patch('HADES_MCP_Server.connections') as mock_connections:
+            conn_manager.close()
+            mock_client.close.assert_called_once()
+            mock_connections.disconnect.assert_called_once_with("default")
+            assert conn_manager._client is None
+            assert not conn_manager._milvus_connected
 
-    @patch('HADES_MCP_Server.ThreadPoolExecutor')
-    def test_init(self, mock_thread_pool_executor):
-        self.assertEqual(self.server.name, "vector-db-mcp-server")
-        self.assertIsNotNone(self.server.conn_manager)
-        self.assertIsNotNone(self.server._executor)
-        self.assertIsNotNone(self.server.tools)
-        self.assertIsNotNone(self.server.metadata)
-        self.assertIsNotNone(self.server.capabilities)
+@pytest.mark.asyncio
+class TestVectorDBMCPServer:
+    @pytest.fixture
+    async def server(self):
+        with patch('HADES_MCP_Server.ConnectionManager') as mock_cm:
+            server = VectorDBMCPServer()
+            server.close = AsyncMock()
+            server.conn_manager = mock_cm.return_value
+            server.conn_manager.get_db = AsyncMock()
+            server.start_time = time.time()
+            return server
 
-    @patch('HADES_MCP_Server.ConnectionManager.get_db')
-    async def test_execute_query(self, mock_get_db):
+    async def test_execute_query(self, server):
         mock_db = MagicMock()
-        mock_get_db.return_value = mock_db
-        mock_db.aql.execute.return_value = [{"key": "value"}]
+        mock_db.aql.execute = MagicMock(return_value=[{"key": "value"}])
+        server.conn_manager.get_db.return_value = mock_db
         
-        result = await self.server.execute_query("FOR doc IN collection RETURN doc")
-        self.assertEqual(result, [{"key": "value"}])
+        result = await server.execute_query("FOR doc IN collection RETURN doc")
+        assert result == [{"key": "value"}]
 
-    @patch('HADES_MCP_Server.ConnectionManager.get_db')
-    async def test_execute_query_error(self, mock_get_db):
+    async def test_handle_call_tool(self, server):
+        request = MagicMock()
+        request.params.name = "execute_query"
+        request.params.arguments = {"query": "FOR doc IN collection RETURN doc"}
+        
         mock_db = MagicMock()
-        mock_get_db.return_value = mock_db
-        mock_db.aql.execute.side_effect = Exception("Query failed")
+        mock_db.aql.execute = MagicMock(return_value=[{"key": "value"}])
+        server.conn_manager.get_db.return_value = mock_db
         
-        with self.assertRaises(MCPError) as context:
-            await self.server.execute_query("FOR doc IN collection RETURN doc")
-        self.assertIn("Query execution failed", str(context.exception))
+        result = await server.handle_call_tool(request)
+        assert result["success"]
+        assert result["result"] == [{"key": "value"}]
 
-    @patch('HADES_MCP_Server.ConnectionManager.ensure_milvus')
-    @patch('HADES_MCP_Server.Collection.search', side_effect=Exception("Search failed"))
-    @patch('HADES_MCP_Server.VectorDBMCPServer.execute_query')
-    async def test_hybrid_search_vector_error(self, mock_execute_query, mock_collection_search, mock_ensure_milvus):
-        args = HybridSearchArgs(
-            milvus_collection="test_collection",
-            arango_collection="test_arango",
-            query_text="test_query",
-            vector=[1.0, 2.0, 3.0],
-            limit=5
+    async def test_health_check(self, server):
+        server.conn_manager.get_db = AsyncMock()
+        server.conn_manager.ensure_milvus = AsyncMock()
+        
+        result = await server.health_check()
+        assert result["status"] == "ok"
+        assert "uptime" in result
+        assert "connections" in result
+
+    async def test_execute_query_with_bind_vars(self, server):
+        mock_db = MagicMock()
+        mock_db.aql.execute = MagicMock(return_value=[{"key": "value"}])
+        server.conn_manager.get_db.return_value = mock_db
+        
+        result = await server.execute_query(
+            "FOR doc IN collection FILTER doc.id == @id RETURN doc",
+            {"id": "123"}
         )
-        
-        with self.assertRaises(MCPError) as context:
-            await self.server.hybrid_search(args)
-        self.assertIn("Hybrid search failed", str(context.exception))
-
-    @patch('HADES_MCP_Server.ConnectionManager.ensure_milvus')
-    @patch('HADES_MCP_Server.Collection.search', return_value=[[MagicMock(id=1)]])
-    @patch('HADES_MCP_Server.VectorDBMCPServer.execute_query', side_effect=Exception("Query failed"))
-    async def test_hybrid_search_document_error(self, mock_execute_query, mock_collection_search, mock_ensure_milvus):
-        args = HybridSearchArgs(
-            milvus_collection="test_collection",
-            arango_collection="test_arango",
-            query_text="test_query",
-            vector=[1.0, 2.0, 3.0],
-            limit=5
+        assert result == [{"key": "value"}]
+        mock_db.aql.execute.assert_called_with(
+            "FOR doc IN collection FILTER doc.id == @id RETURN doc",
+            bind_vars={"id": "123"}
         )
-        
-        with self.assertRaises(MCPError) as context:
-            await self.server.hybrid_search(args)
-        self.assertIn("Hybrid search failed", str(context.exception))
 
-    @patch('HADES_MCP_Server.ConnectionManager.ensure_milvus')
-    @patch('HADES_MCP_Server.Collection.search', return_value=[[MagicMock(id=1)]])
-    @patch('HADES_MCP_Server.VectorDBMCPServer.execute_query', return_value=[{"key": "value"}])
-    async def test_hybrid_search(self, mock_execute_query, mock_collection_search, mock_ensure_milvus):
-        args = HybridSearchArgs(
-            milvus_collection="test_collection",
-            arango_collection="test_arango",
-            query_text="test_query",
-            vector=[1.0, 2.0, 3.0],
-            limit=5
-        )
+    async def test_execute_query_error(self, server):
+        mock_db = MagicMock()
+        mock_db.aql.execute = MagicMock(side_effect=Exception("Query failed"))
+        server.conn_manager.get_db.return_value = mock_db
         
-        result = await self.server.hybrid_search(args)
-        self.assertEqual(result, [{"key": "value"}])
+        with pytest.raises(MCPError) as exc_info:
+            await server.execute_query("FOR doc IN collection RETURN doc")
+        assert "Query execution failed" in str(exc_info.value)
 
-    async def test_handle_list_tools(self):
+    async def test_hybrid_search_success(self, server):
+        # Mock Milvus collection and connection
+        mock_collection = MagicMock()
+        mock_collection.search.return_value = [[MagicMock(id="doc1"), MagicMock(id="doc2")]]
+        server.conn_manager.ensure_milvus = AsyncMock()
+        
+        with patch('pymilvus.Collection', return_value=mock_collection):
+            # Mock ArangoDB query
+            mock_db = MagicMock()
+            mock_db.aql.execute = MagicMock(return_value=[{"id": "doc1"}, {"id": "doc2"}])
+            server.conn_manager.get_db.return_value = mock_db
+            
+            result = await server.hybrid_search(HybridSearchArgs(
+                milvus_collection="test_collection",
+                arango_collection="test_docs",
+                query_text="test query",
+                limit=2,
+                vector=[0.1, 0.2, 0.3]
+            ))
+            
+            assert len(result) == 2
+            assert result[0]["id"] == "doc1"
+            assert result[1]["id"] == "doc2"
+
+    async def test_hybrid_search_with_filters(self, server):
+        # Mock Milvus collection and connection
+        mock_collection = MagicMock()
+        mock_collection.search.return_value = [[MagicMock(id="doc1")]]
+        server.conn_manager.ensure_milvus = AsyncMock()
+        
+        with patch('pymilvus.Collection', return_value=mock_collection):
+            # Mock ArangoDB query
+            mock_db = MagicMock()
+            mock_db.aql.execute = MagicMock(return_value=[{"id": "doc1"}])
+            server.conn_manager.get_db.return_value = mock_db
+            
+            result = await server.hybrid_search(HybridSearchArgs(
+                milvus_collection="test_collection",
+                arango_collection="test_docs",
+                query_text="test query",
+                limit=1,
+                filters={"category": "test"},
+                vector=[0.1, 0.2, 0.3]
+            ))
+            
+            assert len(result) == 1
+            assert result[0]["id"] == "doc1"
+
+    async def test_hybrid_search_error(self, server):
+        server.conn_manager.ensure_milvus = AsyncMock()
+        with patch('pymilvus.Collection', side_effect=Exception("Search failed")):
+            with pytest.raises(MCPError) as exc_info:
+                await server.hybrid_search(HybridSearchArgs(
+                    milvus_collection="test_collection",
+                    arango_collection="test_docs",
+                    query_text="test query",
+                    vector=[0.1, 0.2, 0.3]
+                ))
+            assert "Search failed" in str(exc_info.value)
+
+    async def test_handle_list_tools_request(self, server):
         request = MagicMock()
-        request.params.name = "test_tool"
-        result = await self.server.handle_list_tools(request)
-        self.assertIn("tools", result)
+        result = await server.handle_list_tools(request)
+        assert "tools" in result
+        assert isinstance(result["tools"], list)
+        assert len(result["tools"]) > 0
+        for tool in result["tools"]:
+            assert "name" in tool
+            assert "description" in tool
+            assert "inputSchema" in tool
 
-    @patch('HADES_MCP_Server.VectorDBMCPServer.execute_query')
-    async def test_handle_call_tool(self, mock_execute_query):
+    async def test_handle_call_tool_not_found(self, server):
+        request = MagicMock()
+        request.params.name = "nonexistent_tool"
+        result = await server.handle_call_tool(request)
+        assert not result["success"]
+        assert result["error"]["code"] == "TOOL_NOT_FOUND"
+
+    async def test_handle_call_tool_validation_error(self, server):
+        request = MagicMock()
+        request.params.name = "execute_query"
+        request.params.arguments = {}  # Missing required 'query' parameter
+
+        # Create a Pydantic model for validation
+        class QueryModel(BaseModel):
+            query: str = Field(..., description="Query string")
+
+        server.tools = {
+            "execute_query": {
+                "handler": AsyncMock(),
+                "schema": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"]
+                },
+                "pydantic_model": QueryModel
+            }
+        }
+        
+        result = await server.handle_call_tool(request)
+        assert not result["success"]
+        assert result["error"]["code"] == "VALIDATION_ERROR"
+        assert "Field required" in str(result["error"]["details"])
+
+    async def test_handle_call_tool_timeout(self, server):
         request = MagicMock()
         request.params.name = "execute_query"
         request.params.arguments = {"query": "FOR doc IN collection RETURN doc"}
         
-        mock_execute_query.return_value = [{"key": "value"}]
-        result = await self.server.handle_call_tool(request)
-        self.assertTrue(result["success"])
-        self.assertEqual(result["result"], [{"key": "value"}])
-
-    @patch('HADES_MCP_Server.VectorDBMCPServer.execute_query')
-    async def test_handle_call_tool_tool_not_found(self, mock_execute_query):
-        request = MagicMock()
-        request.params.name = "non_existent_tool"
-        request.params.arguments = {"query": "FOR doc IN collection RETURN doc"}
+        # Make execute_query hang
+        async def hang(*args, **kwargs):
+            await asyncio.sleep(2)
+            
+        server.tools = {
+            "execute_query": {
+                "handler": hang,
+                "schema": {"type": "object", "properties": {"query": {"type": "string"}}}
+            }
+        }
+        server.server_config.request_timeout = 0.1
         
-        result = await self.server.handle_call_tool(request)
-        self.assertFalse(result["success"])
-        self.assertIn("Tool not found", str(result["error"]["message"]))
+        result = await server.handle_call_tool(request)
+        assert not result["success"]
+        assert "timed out" in result["error"]["message"].lower()
 
-    @patch('HADES_MCP_Server.VectorDBMCPServer.execute_query')
-    async def test_handle_call_tool_validation_error(self, mock_execute_query):
-        request = MagicMock()
-        request.params.name = "execute_query"
-        request.params.arguments = {"query": ""}
+    async def test_health_check_all_healthy(self, server):
+        server.conn_manager.get_db = AsyncMock()
+        server.conn_manager.ensure_milvus = AsyncMock()
         
-        result = await self.server.handle_call_tool(request)
-        self.assertFalse(result["success"])
-        self.assertIn("Invalid arguments", str(result["error"]["message"]))
+        result = await server.health_check()
+        assert result["status"] == "ok"
+        assert result["connections"]["arango"]
+        assert result["connections"]["milvus"]
 
-    @patch('HADES_MCP_Server.VectorDBMCPServer.execute_query')
-    async def test_handle_call_tool_timeout(self, mock_execute_query):
-        request = MagicMock()
-        request.params.name = "execute_query"
-        request.params.arguments = {"query": "FOR doc IN collection RETURN doc"}
+    async def test_health_check_degraded_arango(self, server):
+        server.conn_manager.get_db = AsyncMock(side_effect=Exception("DB Error"))
+        server.conn_manager.ensure_milvus = AsyncMock()
         
-        mock_execute_query.side_effect = asyncio.TimeoutError
-        result = await self.server.handle_call_tool(request)
-        self.assertFalse(result["success"])
-        self.assertIn("Tool execution timed out", str(result["error"]["message"]))
+        result = await server.health_check()
+        assert result["status"] == "degraded"
+        assert not result["connections"]["arango"]
+        assert result["connections"]["milvus"]
+        assert "DB Error" in result["errors"]["arango"]
 
-    @patch('HADES_MCP_Server.ConnectionManager.get_db')
-    @patch('HADES_MCP_Server.connections.connect')
-    async def test_health_check(self, mock_connect, mock_get_db):
-        result = await self.server.health_check()
-        self.assertIn("status", result)
-        self.assertIn("uptime", result)
-        self.assertIn("connections", result)
+    async def test_health_check_degraded_milvus(self, server):
+        server.conn_manager.get_db = AsyncMock()
+        server.conn_manager.ensure_milvus = AsyncMock(side_effect=Exception("Milvus Error"))
+        
+        result = await server.health_check()
+        assert result["status"] == "degraded"
+        assert result["connections"]["arango"]
+        assert not result["connections"]["milvus"]
+        assert "Milvus Error" in result["errors"]["milvus"]
 
 if __name__ == "__main__":
-    unittest.main()
+    pytest.main()
