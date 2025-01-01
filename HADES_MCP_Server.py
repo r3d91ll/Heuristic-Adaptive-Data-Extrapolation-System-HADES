@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 import time
 from datetime import datetime, timezone
 import asyncio
+import aiohttp
 
 try:
     from pydantic import BaseModel, Field, validator, ValidationError, field_validator
@@ -469,6 +470,78 @@ class VectorDBMCPServer(FastMCP):
         self.register_handler(ListToolsRequest, self.handle_list_tools)
         self.register_handler(CallToolRequest, self.handle_call_tool)
 
+    @mcp_tool("Enrich context using LLM")
+    async def enrich_context(self, query_text: str) -> str:
+        """
+        Enrich the search query text using a local LLM.
+        
+        Args:
+            query_text: Original search query text
+            
+        Returns:
+            Enriched query text
+            
+        Raises:
+            MCPError: If LLM interaction fails
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "http://192.168.1.202:1234"
+                payload = {"query": query_text}
+                
+                async with session.post(url, json=payload) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        enriched_query = data.get("enriched_query", query_text)
+                        return enriched_query
+                    else:
+                        raise MCPError(
+                            "LLM_ERROR",
+                            f"Failed to enrich context: HTTP {response.status}"
+                        )
+        except Exception as e:
+            logger.error("LLM interaction failed: %s", e, exc_info=True)
+            raise MCPError(
+                "LLM_ERROR",
+                "LLM interaction failed: %s" % e
+            ) from e
+
+    @mcp_tool("Generate natural language response using LLM")
+    async def generate_response(self, enriched_query: str) -> str:
+        """
+        Generate a natural language response based on the enriched query text.
+        
+        Args:
+            enriched_query: Enriched search query text
+            
+        Returns:
+            Natural language response
+            
+        Raises:
+            MCPError: If LLM interaction fails
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "http://192.168.1.202:1234/generate"
+                payload = {"query": enriched_query}
+                
+                async with session.post(url, json=payload) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        natural_language_response = data.get("response", "")
+                        return natural_language_response
+                    else:
+                        raise MCPError(
+                            "LLM_ERROR",
+                            f"Failed to generate response: HTTP {response.status}"
+                        )
+        except Exception as e:
+            logger.error("LLM interaction failed: %s", e, exc_info=True)
+            raise MCPError(
+                "LLM_ERROR",
+                "LLM interaction failed: %s" % e
+            ) from e
+
     def _register_tools(self) -> None:
         """
         Dynamically register all methods decorated with @mcp_tool.
@@ -616,6 +689,32 @@ class VectorDBMCPServer(FastMCP):
                 {"query": query, "bind_vars": bind_vars}
             ) from e
 
+    @mcp_tool("Route queries to appropriate search methods")
+    async def route_query(
+        self,
+        args: HybridSearchArgs
+    ) -> List[Dict[str, Any]]:
+        """
+        Route queries to the appropriate search method based on provided arguments.
+        
+        Args:
+            args: HybridSearchArgs containing search parameters
+            
+        Returns:
+            List of matched documents
+            
+        Raises:
+            MCPError: If no valid search parameters are provided
+        """
+        if args.vector and args.query_text:
+            return await self.hybrid_search(args)
+        elif args.vector:
+            return await self.vector_search(args)
+        elif args.query_text:
+            return await self.document_search(args)
+        else:
+            raise MCPError("INVALID_QUERY", "No valid search parameters provided.")
+    
     @mcp_tool("Perform hybrid search across vector and document stores")
     async def hybrid_search(
         self,
@@ -681,7 +780,10 @@ class VectorDBMCPServer(FastMCP):
             bind_vars = {"keys": doc_ids, **filter_binds}
             
             # Execute document lookup
-            return await self.execute_query(aql, bind_vars)
+            document_results = await self.execute_query(aql, bind_vars)
+            
+            # Synthesize results
+            return self.synthesize_results(vector_results[0], document_results)
             
         except Exception as e:
             logger.error("Hybrid search failed: %s", e, exc_info=True)
@@ -691,6 +793,111 @@ class VectorDBMCPServer(FastMCP):
                 {
                     "milvus_collection": args.milvus_collection,
                     "arango_collection": args.arango_collection
+                }
+            )
+    
+    def synthesize_results(self, vector_results, document_results):
+        """
+        Combine scores from Milvus and ArangoDB results to rank outputs based on relevance.
+        
+        Args:
+            vector_results: List of vector search results
+            document_results: List of document search results
+            
+        Returns:
+            List of combined and ranked documents
+        """
+        # Create a dictionary for quick lookup of document results by ID
+        doc_dict = {doc["_key"]: doc for doc in document_results}
+        
+        # Combine and rank results using weighted scoring
+        combined = [
+            {
+                "id": str(hit.id),
+                "score": hit.distance + doc_dict.get(str(hit.id), {}).get("relevance", 0)
+            }
+            for hit in vector_results if str(hit.id) in doc_dict
+        ]
+        
+        return sorted(combined, key=lambda x: x["score"], reverse=True)
+    
+    @mcp_tool("Perform vector similarity search")
+    async def vector_search(
+        self,
+        args: VectorSearchArgs
+    ) -> List[Dict[str, Any]]:
+        """
+        Perform vector similarity search.
+        
+        Args:
+            args: VectorSearchArgs containing search parameters
+            
+        Returns:
+            List of matched documents
+            
+        Raises:
+            MCPError: If search operation fails
+        """
+        try:
+            # Ensure Milvus connection
+            await self.conn_manager.ensure_milvus()
+            
+            # Vector search implementation
+            collection = pymilvus.Collection(args.collection)
+            search_params = {
+                "metric_type": "L2",
+                "params": {"nprobe": 10},
+            }
+            
+            # Execute vector search
+            vector_results = collection.search(
+                data=[args.vector],
+                anns_field="embedding",
+                param=search_params,
+                limit=args.limit,
+                expr=args.filters
+            )
+            
+            return [{"id": str(hit.id), "score": hit.distance} for hit in vector_results[0]]
+            
+        except Exception as e:
+            logger.error("Vector search failed: %s", e, exc_info=True)
+            raise MCPError(
+                "VECTOR_SEARCH_ERROR",
+                "Vector search failed: %s" % e,
+                {
+                    "milvus_collection": args.collection
+                }
+            )
+    
+    @mcp_tool("Perform document search using AQL")
+    async def document_search(
+        self,
+        args: QueryArgs
+    ) -> List[Dict[str, Any]]:
+        """
+        Perform document search using AQL.
+        
+        Args:
+            args: QueryArgs containing search parameters
+            
+        Returns:
+            List of matched documents
+            
+        Raises:
+            MCPError: If search operation fails
+        """
+        try:
+            # Execute query
+            return await self.execute_query(args.query, args.bind_vars)
+            
+        except Exception as e:
+            logger.error("Document search failed: %s", e, exc_info=True)
+            raise MCPError(
+                "DOCUMENT_SEARCH_ERROR",
+                "Document search failed: %s" % e,
+                {
+                    "query": args.query
                 }
             )
 

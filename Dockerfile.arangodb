@@ -1,9 +1,9 @@
 # Use the official ArangoDB image as the base image
 FROM arangodb:3.12
 
-# Install curl using apk
+# Install curl and bash using apk
 RUN apk update && \
-    apk add --no-cache curl
+    apk add --no-cache curl bash
 
 # Set the entrypoint and command to start ArangoDB with RocksDB storage engine
 ENTRYPOINT ["/entrypoint.sh"]
