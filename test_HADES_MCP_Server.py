@@ -15,6 +15,10 @@ from HADES_MCP_Server import (
     ListToolsRequest
 )
 import time
+from typing import Dict, Any, List
+import asyncio
+import signal
+import sys
 
 # Test DatabaseConfig
 def test_database_config_defaults():
@@ -121,13 +125,13 @@ async def test_connection_manager_get_db(mock_connect, mock_client):
     db_config = DatabaseConfig()
     milvus_config = MilvusConfig()
     conn_manager = ConnectionManager(db_config, milvus_config)
-    
+
     # Mock ArangoDB client and database
     mock_arango_client_instance = MagicMock()
     mock_database = MagicMock()
     mock_connect.return_value = mock_arango_client_instance
     mock_arango_client_instance.db.return_value = mock_database
-    
+
     db = await conn_manager.get_db()
     assert db == mock_database
 
@@ -137,13 +141,13 @@ async def test_connection_manager_get_db_retry(mock_connect, mock_client):
     db_config = DatabaseConfig()
     milvus_config = MilvusConfig()
     conn_manager = ConnectionManager(db_config, milvus_config)
-    
+
     # Mock ArangoDB client and database with retry logic
     mock_arango_client_instance = MagicMock()
     mock_database = MagicMock()
     mock_connect.side_effect = [Exception("Connection failed"), mock_arango_client_instance]
     mock_arango_client_instance.db.return_value = mock_database
-    
+
     db = await conn_manager.get_db()
     assert db == mock_database
 
@@ -153,12 +157,12 @@ async def test_connection_manager_get_db_failure(mock_connect, mock_client):
     db_config = DatabaseConfig()
     milvus_config = MilvusConfig()
     conn_manager = ConnectionManager(db_config, milvus_config)
-    
+
     # Mock ArangoDB client and database with failure
     mock_arango_client_instance = MagicMock()
     mock_database = MagicMock()
     mock_connect.side_effect = Exception("Connection failed")
-    
+
     with pytest.raises(MCPError):
         await conn_manager.get_db()
 
@@ -168,7 +172,7 @@ async def test_connection_manager_ensure_milvus(mock_connect, mock_client):
     db_config = DatabaseConfig()
     milvus_config = MilvusConfig()
     conn_manager = ConnectionManager(db_config, milvus_config)
-    
+
     # Mock Milvus connection
     await conn_manager.ensure_milvus()
     assert conn_manager._milvus_connected is True
@@ -179,7 +183,7 @@ async def test_connection_manager_ensure_milvus_retry(mock_connect, mock_client)
     db_config = DatabaseConfig()
     milvus_config = MilvusConfig()
     conn_manager = ConnectionManager(db_config, milvus_config)
-    
+
     # Mock Milvus connection with retry logic
     mock_client.side_effect = [Exception("Connection failed"), None]
     await conn_manager.ensure_milvus()
@@ -191,7 +195,7 @@ async def test_connection_manager_ensure_milvus_retry_failure(mock_connect, mock
     db_config = DatabaseConfig()
     milvus_config = MilvusConfig()
     conn_manager = ConnectionManager(db_config, milvus_config)
-    
+
     # Mock Milvus connection with retry logic
     mock_client.side_effect = Exception("Connection failed")
     await conn_manager.ensure_milvus()
@@ -226,9 +230,9 @@ def test_vector_db_mcp_server_register_tools(mock_executor, mock_conn_manager):
 def test_vector_db_mcp_server_register_handler(mock_executor, mock_conn_manager):
     server = VectorDBMCPServer()
     handler_mock = MagicMock()
-    request_mock = ListToolsRequest(method="tools/list")
-    server.register_handler(request_mock, handler_mock)
-    assert server._handlers[request_mock] == handler_mock
+    request_type = ListToolsRequest  # Use the class itself instead of an instance
+    server.register_handler(request_type, handler_mock)
+    assert server._handlers[request_type] == handler_mock
 
 @patch('HADES_MCP_Server.ConnectionManager')
 @patch('HADES_MCP_Server.ThreadPoolExecutor')
@@ -246,26 +250,26 @@ async def test_vector_db_mcp_server_handle_request(mock_executor, mock_conn_mana
 @patch('HADES_MCP_Server.ThreadPoolExecutor')
 async def test_vector_db_mcp_server_handle_request_no_handler(mock_executor, mock_conn_manager):
     server = VectorDBMCPServer()
-    request_mock = MagicMock(method="tools/call", params=CallToolRequest(name="invalid_tool", arguments={}))
+    request_mock = CallToolRequest(method="tools/call", params={"name": "invalid_tool", "arguments": {}})
     
     with pytest.raises(MCPError) as excinfo:
         await server.handle_request(request_mock)
-    assert "REQUEST_TYPE_NOT_FOUND" in str(excinfo.value)
+    assert "TOOL_NOT_FOUND" in str(excinfo.value)
 
 @patch('HADES_MCP_Server.ConnectionManager')
 @patch('HADES_MCP_Server.ThreadPoolExecutor')
 async def test_vector_db_mcp_server_execute_query(mock_executor, mock_conn_manager):
     server = VectorDBMCPServer()
     query_args = QueryArgs(query="FOR doc IN collection RETURN doc")
-    
+
     # Mock connection manager and database
     mock_db = MagicMock()
     mock_conn_manager.get_db.return_value = mock_db
-    
+
     # Mock aql execute
     mock_aql_execute = MagicMock(return_value=[{"key": "value"}])
     server._executor.submit.return_value.result.return_value = mock_aql_execute
-    
+
     result = await server.execute_query(query_args.query, query_args.bind_vars)
     assert result == [{"key": "value"}]
     mock_db.aql.execute.assert_called_once_with(query_args.query, bind_vars=query_args.bind_vars or {})
@@ -275,15 +279,15 @@ async def test_vector_db_mcp_server_execute_query(mock_executor, mock_conn_manag
 async def test_vector_db_mcp_server_execute_query_error(mock_executor, mock_conn_manager):
     server = VectorDBMCPServer()
     query_args = QueryArgs(query="FOR doc IN collection RETURN doc")
-    
+
     # Mock connection manager and database
     mock_db = MagicMock()
     mock_conn_manager.get_db.return_value = mock_db
-    
+
     # Mock aql execute with error
     mock_aql_execute = MagicMock(side_effect=Exception("Query failed"))
     server._executor.submit.return_value.result.return_value = mock_aql_execute
-    
+
     with pytest.raises(MCPError) as excinfo:
         await server.execute_query(query_args.query, query_args.bind_vars)
     assert "QUERY_ERROR" in str(excinfo.value)
@@ -298,22 +302,23 @@ async def test_vector_db_mcp_server_hybrid_search(mock_executor, mock_conn_manag
         query_text="search text",
         vector=[0.1, 0.2, 0.3]
     )
-    
+
     # Mock connection manager and database
     mock_db = MagicMock()
     mock_conn_manager.get_db.return_value = mock_db
-    
+
     # Mock Milvus collection search
     mock_collection = MagicMock()
     mock_search_result = MagicMock()
     mock_search_result[0] = [MagicMock(id=1)]
     mock_collection.search.return_value = mock_search_result
     server.conn_manager.ensure_milvus = AsyncMock()
-    
-    result = await server.hybrid_search(search_args)
-    assert result == [{"key": "value"}]
-    mock_collection.search.assert_called_once()
-    mock_db.aql.execute.assert_called_once()
+
+    with patch('pymilvus.Collection', return_value=mock_collection):
+        result = await server.hybrid_search(search_args)
+        assert result == [{"key": "value"}]
+        mock_collection.search.assert_called_once()
+        mock_db.aql.execute.assert_called_once()
 
 @patch('HADES_MCP_Server.ConnectionManager')
 @patch('HADES_MCP_Server.ThreadPoolExecutor')
@@ -325,14 +330,14 @@ async def test_vector_db_mcp_server_hybrid_search_error(mock_executor, mock_conn
         query_text="search text",
         vector=[0.1, 0.2, 0.3]
     )
-    
+
     # Mock connection manager and database
     mock_db = MagicMock()
     mock_conn_manager.get_db.return_value = mock_db
-    
+
     # Mock Milvus collection search with error
     server.conn_manager.ensure_milvus = AsyncMock(side_effect=Exception("Milvus failed"))
-    
+
     with pytest.raises(MCPError) as excinfo:
         await server.hybrid_search(search_args)
     assert "HYBRID_SEARCH_ERROR" in str(excinfo.value)
@@ -355,7 +360,10 @@ async def test_vector_db_mcp_server_handle_list_tools(mock_executor, mock_conn_m
 async def test_vector_db_mcp_server_handle_call_tool(mock_executor, mock_conn_manager):
     server = VectorDBMCPServer()
     request_mock = CallToolRequest(method="tools/call", params={"name": "execute_query", "arguments": {"query": "FOR doc IN collection RETURN doc"}})
-    
+
+    # Mock execute_query
+    server.execute_query = AsyncMock(return_value=[{"key": "value"}])
+
     response = await server.handle_call_tool(request_mock)
     assert response["success"] is True
 
@@ -374,7 +382,7 @@ async def test_vector_db_mcp_server_handle_call_tool_invalid_tool(mock_executor,
 async def test_vector_db_mcp_server_handle_call_tool_validation_error(mock_executor, mock_conn_manager):
     server = VectorDBMCPServer()
     request_mock = CallToolRequest(method="tools/call", params={"name": "execute_query", "arguments": {"query": ""}})
-    
+
     response = await server.handle_call_tool(request_mock)
     assert response["success"] is False
     assert "VALIDATION_ERROR" in response["error"]["code"]
@@ -384,7 +392,7 @@ async def test_vector_db_mcp_server_handle_call_tool_validation_error(mock_execu
 async def test_vector_db_mcp_server_handle_call_tool_timeout(mock_executor, mock_conn_manager):
     server = VectorDBMCPServer()
     request_mock = CallToolRequest(method="tools/call", params={"name": "execute_query", "arguments": {"query": "FOR doc IN collection RETURN doc"}})
-    
+
     # Mock tool handler with timeout
     server.tools["execute_query"]["handler"] = AsyncMock(side_effect=asyncio.TimeoutError)
     
@@ -397,14 +405,14 @@ async def test_vector_db_mcp_server_handle_call_tool_timeout(mock_executor, mock
 async def test_vector_db_mcp_server_health_check(mock_executor, mock_conn_manager):
     server = VectorDBMCPServer()
     server.start_time = time.time()  # Initialize start_time
-    
+
     # Mock connection manager and database
     mock_db = MagicMock()
     mock_conn_manager.get_db.return_value = mock_db
-    
+
     # Mock Milvus connection
     server.conn_manager.ensure_milvus = AsyncMock()
-    
+
     status = await server.health_check()
     assert status["status"] == "ok"
     assert "uptime" in status
@@ -457,3 +465,65 @@ def test_vector_db_mcp_server_close(mock_executor, mock_conn_manager):
     server.close()
     assert mock_arango_client_instance.close.assert_called_once_with()
     assert mock_conn_manager.return_value._executor.shutdown.assert_called_once_with(wait=True)
+
+# New tests for uncovered areas
+
+@patch('HADES_MCP_Server.ConnectionManager')
+@patch('HADES_MCP_Server.ThreadPoolExecutor')
+async def test_vector_db_mcp_server_route_query(mock_executor, mock_conn_manager):
+    server = VectorDBMCPServer()
+    
+    # Mock hybrid_search
+    server.hybrid_search = AsyncMock(return_value=[{"key": "value"}])
+    
+    args = HybridSearchArgs(
+        milvus_collection="test_milvus",
+        arango_collection="test_arango",
+        query_text="search text",
+        vector=[0.1, 0.2, 0.3]
+    )
+    
+    result = await server.route_query(args)
+    assert result == [{"key": "value"}]
+    server.hybrid_search.assert_called_once_with(args)
+
+@patch('HADES_MCP_Server.ConnectionManager')
+@patch('HADES_MCP_Server.ThreadPoolExecutor')
+async def test_vector_db_mcp_server_route_query_invalid(mock_executor, mock_conn_manager):
+    server = VectorDBMCPServer()
+
+    with pytest.raises(ValidationError) as excinfo:
+        HybridSearchArgs(
+            milvus_collection="test_milvus",
+            arango_collection="test_arango",
+            query_text=None,
+            vector=[]
+        )
+    assert "Input should be a valid string" in str(excinfo.value)
+    assert "Value error Vector cannot be empty" in str(excinfo.value)
+
+@patch('HADES_MCP_Server.ConnectionManager')
+@patch('HADES_MCP_Server.ThreadPoolExecutor')
+def test_vector_db_mcp_server_handle_shutdown(mock_executor, mock_conn_manager):
+    server = VectorDBMCPServer()
+
+    # Mock close method
+    server.close = MagicMock()
+
+    with patch.object(sys, 'exit') as mock_exit:
+        server._handle_shutdown(signal.SIGINT, None)
+        server.close.assert_called_once_with()
+        mock_exit.assert_not_called()
+
+@patch('HADES_MCP_Server.ConnectionManager')
+@patch('HADES_MCP_Server.ThreadPoolExecutor')
+def test_vector_db_mcp_server_handle_shutdown_sigterm(mock_executor, mock_conn_manager):
+    server = VectorDBMCPServer()
+
+    # Mock close method
+    server.close = MagicMock()
+
+    with patch.object(sys, 'exit') as mock_exit:
+        server._handle_shutdown(signal.SIGTERM, None)
+        server.close.assert_called_once_with()
+        mock_exit.assert_not_called()

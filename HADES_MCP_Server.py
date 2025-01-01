@@ -110,6 +110,27 @@ class DatabaseConfig(BaseSettings):
         'env_nested_delimiter': '__'
     }
 
+    @field_validator('url')
+    def validate_url(cls, v: str) -> str:
+        """
+        Validate the URL string.
+        
+        Args:
+            cls: Class reference (automatically injected by Pydantic)
+            v: URL string to validate
+            
+        Returns:
+            Validated URL string
+            
+        Raises:
+            ValueError: If the URL is invalid
+        """
+        from urllib.parse import urlparse
+        result = urlparse(v)
+        if not all([result.scheme, result.netloc]):
+            raise ValueError("Invalid URL")
+        return v
+
 class MilvusConfig(BaseSettings):
     """Configuration for Milvus connection."""
     host: str = Field(
@@ -208,6 +229,63 @@ class ServerConfig(BaseSettings):
         'env_nested_delimiter': '__'
     }
 
+    @field_validator('thread_pool_size')
+    def validate_thread_pool_size(cls, v: int) -> int:
+        """
+        Validate the thread pool size.
+        
+        Args:
+            cls: Class reference (automatically injected by Pydantic)
+            v: Thread pool size to validate
+            
+        Returns:
+            Validated thread pool size
+            
+        Raises:
+            ValueError: If the thread pool size is less than 1
+        """
+        if v < 1:
+            raise ValueError("Thread pool size must be at least 1")
+        return v
+
+    @field_validator('max_concurrent_requests')
+    def validate_max_concurrent_requests(cls, v: int) -> int:
+        """
+        Validate the maximum concurrent requests.
+        
+        Args:
+            cls: Class reference (automatically injected by Pydantic)
+            v: Maximum concurrent requests to validate
+            
+        Returns:
+            Validated maximum concurrent requests
+            
+        Raises:
+            ValueError: If the maximum concurrent requests is less than 1
+        """
+        if v < 1:
+            raise ValueError("Maximum concurrent requests must be at least 1")
+        return v
+
+    @field_validator('request_timeout')
+    def validate_request_timeout(cls, v: float) -> float:
+        """
+        Validate the request timeout.
+        
+        Args:
+            cls: Class reference (automatically injected by Pydantic)
+            v: Request timeout to validate
+            
+        Returns:
+            Validated request timeout
+            
+        Raises:
+            ValueError: If the request timeout is less than 0.1
+        """
+        if v < 0.1:
+            raise ValueError("Request timeout must be at least 0.1 seconds")
+        return v
+
 class QueryArgs(BaseModel):
     """Arguments for AQL query execution."""
     query: str = Field(
@@ -287,6 +365,7 @@ class VectorSearchArgs(BaseModel):
         Raises:
             ValueError: If the vector is empty
         """
+        print("validate_vector called with:", v)  # Debugging print statement
         if not v:
             raise ValueError("Vector cannot be empty")
         return v
@@ -329,6 +408,25 @@ class HybridSearchArgs(BaseModel):
     model_config = {
         'extra': 'forbid'
     }
+
+    @field_validator('vector')
+    def validate_vector(cls, v: List[float]) -> List[float]:
+        """
+        Validate the vector parameter for vector search.
+        
+        Args:
+            cls: Class reference (automatically injected by Pydantic)
+            v: List of float values representing the vector
+            
+        Returns:
+            The validated vector
+            
+        Raises:
+            ValueError: If the vector is empty
+        """
+        if not v:
+            raise ValueError("Vector cannot be empty")
+        return v
 
 class MCPError(Exception):
     """Custom exception for MCP-related errors."""
@@ -1004,7 +1102,7 @@ class VectorDBMCPServer(FastMCP):
                 "request_id": request_id
             }
         finally:
-            logger.info("Completed tool call %s", request_id)
+            logger.info("Completed tool call %0", request_id)
 
     async def health_check(self) -> Dict[str, Any]:
         """
