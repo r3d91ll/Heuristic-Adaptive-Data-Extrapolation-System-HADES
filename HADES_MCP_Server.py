@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import os
@@ -569,76 +567,44 @@ class VectorDBMCPServer(FastMCP):
         self.register_handler(CallToolRequest, self.handle_call_tool)
 
     @mcp_tool("Enrich context using LLM")
-    async def enrich_context(self, query_text: str) -> str:
-        """
-        Enrich the search query text using a local LLM.
-        
-        Args:
-            query_text: Original search query text
-            
-        Returns:
-            Enriched query text
-            
-        Raises:
-            MCPError: If LLM interaction fails
-        """
+    async def enrich_context(self, context: str) -> dict:
+        """Enrich the context using the LLM service."""
         try:
-            async with aiohttp.ClientSession() as session:
-                url = "http://192.168.1.202:1234"
-                payload = {"query": query_text}
-                
-                async with session.post(url, json=payload) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        enriched_query = data.get("enriched_query", query_text)
-                        return enriched_query
-                    else:
-                        raise MCPError(
-                            "LLM_ERROR",
-                            f"Failed to enrich context: HTTP {response.status}"
-                        )
+            session = aiohttp.ClientSession()
+            try:
+                response = await session.post(
+                    f"{self.llm_service_url}/enrich",
+                    json={"context": context},
+                    headers={"Content-Type": "application/json"}
+                )
+                if response.status != 200:
+                    raise MCPError("LLM_ERROR", "Failed to enrich context")
+                return await response.json()
+            finally:
+                await session.close()
         except Exception as e:
             logger.error("LLM interaction failed: %s", e, exc_info=True)
-            raise MCPError(
-                "LLM_ERROR",
-                "LLM interaction failed: %s" % e
-            ) from e
+            raise MCPError("LLM_ERROR", f"LLM interaction failed: {e}") from e
 
     @mcp_tool("Generate natural language response using LLM")
-    async def generate_response(self, enriched_query: str) -> str:
-        """
-        Generate a natural language response based on the enriched query text.
-        
-        Args:
-            enriched_query: Enriched search query text
-            
-        Returns:
-            Natural language response
-            
-        Raises:
-            MCPError: If LLM interaction fails
-        """
+    async def generate_response(self, prompt: str) -> dict:
+        """Generate a response using the LLM service."""
         try:
-            async with aiohttp.ClientSession() as session:
-                url = "http://192.168.1.202:1234/generate"
-                payload = {"query": enriched_query}
-                
-                async with session.post(url, json=payload) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        natural_language_response = data.get("response", "")
-                        return natural_language_response
-                    else:
-                        raise MCPError(
-                            "LLM_ERROR",
-                            f"Failed to generate response: HTTP {response.status}"
-                        )
+            session = aiohttp.ClientSession()
+            try:
+                response = await session.post(
+                    f"{self.llm_service_url}/generate",
+                    json={"prompt": prompt},
+                    headers={"Content-Type": "application/json"}
+                )
+                if response.status != 200:
+                    raise MCPError("LLM_ERROR", "Failed to generate response")
+                return await response.json()
+            finally:
+                await session.close()
         except Exception as e:
             logger.error("LLM interaction failed: %s", e, exc_info=True)
-            raise MCPError(
-                "LLM_ERROR",
-                "LLM interaction failed: %s" % e
-            ) from e
+            raise MCPError("LLM_ERROR", f"LLM interaction failed: {e}") from e
 
     def _register_tools(self) -> None:
         """
@@ -730,16 +696,39 @@ class VectorDBMCPServer(FastMCP):
         if origin is Union:
             args = get_args(annotation)
             if type(None) in args:
+                # For Optional types (Union with None), just use the non-None type
+                non_none_types = [arg for arg in args if arg != type(None)]
+                if len(non_none_types) == 1:
+                    return VectorDBMCPServer._annotation_to_json_schema(non_none_types[0])
                 return {
                     "anyOf": [
                         VectorDBMCPServer._annotation_to_json_schema(arg)
                         for arg in args if arg != type(None)
                     ]
                 }
+        elif origin is list:
+            args = get_args(annotation)
+            return {
+                "type": "array",
+                "items": VectorDBMCPServer._annotation_to_json_schema(args[0]) if args else {"type": "string"}
+            }
+        elif origin is dict:
+            args = get_args(annotation)
+            if len(args) == 2:  # Dict[key_type, value_type]
+                value_type = args[1]
+                if value_type == int:
+                    return {
+                        "type": "object",
+                        "additionalProperties": {"type": "number"}
+                    }
+                return {
+                    "type": "object",
+                    "additionalProperties": VectorDBMCPServer._annotation_to_json_schema(value_type)
+                }
         
         type_map = {
             str: {"type": "string"},
-            int: {"type": "number", "multipleOf": 1},
+            int: {"type": "number"},
             float: {"type": "number"},
             bool: {"type": "boolean"},
             List[float]: {
@@ -1045,29 +1034,39 @@ class VectorDBMCPServer(FastMCP):
             
             # Validate arguments using tool's schema
             try:
-                schema_model = tool.get("pydantic_model")
-                if schema_model:
-                    validated_args = schema_model.model_validate(request.params.arguments)
-                else:
+                from jsonschema import validate, ValidationError as JsonSchemaValidationError
+                
+                try:
+                    validate(instance=request.params.arguments, schema=tool["schema"])
                     validated_args = request.params.arguments
-            except ValidationError as e:
-                logger.error("Validation error in %s: %s", request_id, e)
-                return {
-                    "success": False,
-                    "error": {
-                        "code": "VALIDATION_ERROR",
-                        "message": "Invalid arguments",
-                        "details": e.errors()
-                    },
-                    "request_id": request_id
-                }
-
+                except JsonSchemaValidationError as e:
+                    logger.error("Validation error in %s: %s", request_id, e)
+                    return {
+                        "success": False,
+                        "error": {
+                            "code": "INVALID_ARGUMENTS",
+                            "message": str(e),
+                            "details": {"schema": tool["schema"]}
+                        },
+                        "request_id": request_id
+                    }
+                    
+            except ImportError:
+                # Fallback to basic validation if jsonschema is not available
+                validated_args = request.params.arguments
+            
             # Execute tool with timeout
             try:
                 result = await asyncio.wait_for(
                     tool["handler"](validated_args),
                     timeout=self.server_config.request_timeout
                 )
+                
+                # If the result is already a dict with success/error, return it directly
+                if isinstance(result, dict) and "success" in result:
+                    result["request_id"] = request_id
+                    return result
+                    
                 return {
                     "success": True,
                     "result": result,
@@ -1102,7 +1101,7 @@ class VectorDBMCPServer(FastMCP):
                 "request_id": request_id
             }
         finally:
-            logger.info("Completed tool call %0", request_id)
+            logger.info("Completed tool call %s", request_id)
 
     async def health_check(self) -> Dict[str, Any]:
         """
@@ -1161,9 +1160,10 @@ class VectorDBMCPServer(FastMCP):
         try:
             self.transport = transport
             self.start_time = time.time()
-            # self.run_forever()
+            transport.connect()  # Call connect on the transport
         except Exception as e:
-            logger.error("Server connection failed: %s", e, exc_info=True)
+            error_msg = f"Failed to connect: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             sys.exit(1)
 
     def run(self) -> None:
@@ -1173,12 +1173,17 @@ class VectorDBMCPServer(FastMCP):
             signal.signal(signal.SIGINT, self._handle_shutdown)
             signal.signal(signal.SIGTERM, self._handle_shutdown)
             
-            # Initialize transport
-            transport = StdioServerParameters(
-                command="python",
-                args=["HADES_MCP_Server.py"]
-            )
-            self.connect(transport)
+            # Initialize transport if not already set
+            if not hasattr(self, 'transport'):
+                transport = StdioServerParameters(
+                    command="python",
+                    args=["HADES_MCP_Server.py"]
+                )
+                self.connect(transport)
+            
+            # Run the server
+            if hasattr(self.transport, 'run'):
+                self.transport.run()
             
             logger.info("Vector DB MCP Server running")
             logger.info("Connected to ArangoDB: %s", self.db_config.database)
@@ -1188,13 +1193,16 @@ class VectorDBMCPServer(FastMCP):
             logger.error("Server initialization failed: %s", e, exc_info=True)
             sys.exit(1)
 
-
-if __name__ == "__main__":
-    server = VectorDBMCPServer()
+async def main():
+    """Main entry point for the server."""
     try:
-        server.run()
+        server = VectorDBMCPServer()
+        await server.run()
     except Exception as e:
-        logger.error("Fatal error: %s", e, exc_info=True)
+        logger.error("Server error: %s", e, exc_info=True)
         sys.exit(1)
     finally:
-        server.close()
+        await server.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
