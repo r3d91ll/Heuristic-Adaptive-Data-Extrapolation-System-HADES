@@ -1,0 +1,1 @@
+"""Core package containing fundamental classes and models.""" 

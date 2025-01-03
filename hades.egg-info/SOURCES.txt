@@ -1,0 +1,7 @@
+README.md
+setup.py
+hades.egg-info/PKG-INFO
+hades.egg-info/SOURCES.txt
+hades.egg-info/dependency_links.txt
+hades.egg-info/requires.txt
+hades.egg-info/top_level.txt

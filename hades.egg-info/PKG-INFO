@@ -1,0 +1,59 @@
+Metadata-Version: 2.1
+Name: hades
+Version: 0.1.0
+Summary: HADES - Hybrid ArangoDB and Milvus Database Engine System
+Home-page: https://github.com/yourusername/hades
+Author: Your Name
+Author-email: your.email@example.com
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: python-arango>=7.5.0
+Requires-Dist: pymilvus>=2.2.0
+Requires-Dist: aiohttp>=3.8.0
+Requires-Dist: pytest>=7.0.0
+Requires-Dist: pytest-asyncio>=0.20.0
+Requires-Dist: pytest-cov>=4.0.0
+
+# HADES
+
+HADES (Hybrid ArangoDB and Milvus Database Engine System) is a powerful system that combines document and vector storage capabilities.
+
+## Features
+
+- Hybrid search combining vector similarity and document filtering
+- Modular architecture for easy extension
+- Async-first design
+- Comprehensive test coverage
+- Type-safe configuration using Pydantic
+
+## Installation
+
+```bash
+pip install -e .
+```
+
+## Development
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run tests with coverage
+pytest --cov=hades
+```
+
+## License
+
+MIT License
