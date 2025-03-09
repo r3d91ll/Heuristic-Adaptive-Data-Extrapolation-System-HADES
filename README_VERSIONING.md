@@ -41,6 +41,7 @@ The differential versioning system captures changes to the knowledge graph in a 
 ### 2.5 Component Integration
 
 All HADES components have been updated to support versioning:
+
 - **PathRAG**: Version-aware graph traversal
 - **TCR**: Context restoration with version awareness
 - **GraphCheck**: Fact verification against specific versions
@@ -116,10 +117,12 @@ The versioning system is exposed through the MCP server as tools:
 ## 6. Dependencies
 
 The visualization tools require additional dependencies:
+
 - matplotlib
 - networkx
 
 Install with:
+
 ```bash
 poetry add matplotlib networkx
-``` 
+```

@@ -11,21 +11,28 @@ Below is a general timeline suggesting how HADES might progress from proof-of-co
    - Set up ArangoDB and skeleton code for LLM integration.
    - Implement a minimal version of PathRAG for basic graph traversal.
    - Integrate the MCP server with simple tool registrations.
+   - Establish base security infrastructure with authentication.
 
 2. **Phase 2: Advanced Retrieval & TCR Integration (Weeks 5–8)**
    - Add Triple Context Restoration (TCR) to provide richer context.
    - Implement partial query-driven feedback loops for missing knowledge.
    - Validate multi-hop retrieval performance.
+   - Implement differential versioning system for knowledge graph tracking.
+   - Enhance data ingestion pipeline with validation and preprocessing.
 
 3. **Phase 3: Fact-Checking & Continual Learning (Weeks 9–12)**
    - Integrate the GraphCheck module to validate LLM outputs post-generation.
    - Add External Continual Learner (ECL) for domain tagging and dynamic updates.
    - Conduct early-stage load testing and optimization.
+   - Extend version-awareness to all components for time-travel queries.
+   - Implement Role-Based Access Control and enhanced security features.
 
 4. **Phase 4: Finalization & Production Readiness (Weeks 13–16)**
-   - Harden security (MCP token authentication, rate limiting).
+   - Harden security (RBAC, token authentication, API keys, rate limiting, audit logging).
    - Comprehensive integration testing of all components.
+   - Optimize performance with caching and query improvements.
    - Deploy to local or on-prem environment with real data ingestion.
+   - Implement monitoring and alerting systems.
 
 ## 2. Phase-Specific Implementation Details
 
@@ -33,47 +40,64 @@ Below is a general timeline suggesting how HADES might progress from proof-of-co
 - **Goals**: Ensure that the LLM can query and retrieve from ArangoDB with minimal overhead.
 - **Key Tasks**:
   - Create baseline schema in ArangoDB.
-  - Configure MCP server for a single “retrieval” tool.
+  - Configure MCP server for a single "retrieval" tool.
   - Set up local environment with Poetry and systemd scripts for process management.
+  - Implement basic authentication with token generation and validation.
+  - Design core classes for the layered architecture.
 
 ### Phase 2: Enhanced Retrieval
-- **Goals**: Implement TCR to enrich the knowledge graph with contextual sentences.  
+- **Goals**: Implement TCR to enrich the knowledge graph with contextual sentences and establish version tracking.  
 - **Key Tasks**:
   - Integrate ModernBERT-large embeddings for TCR matching.
   - Test retrieval across a variety of domain subsets to ensure alignment with ECL (in preparation for Phase 3).
   - Begin building the partial feedback loop for incomplete or uncertain answers.
+  - Implement differential versioning system with semantic versioning.
+  - Create data ingestion pipeline with Pydantic models for validation.
+  - Add version metadata to all database operations.
 
 ### Phase 3: Verification & Continuous Updates
-- **Goals**: Make responses factually robust and keep knowledge fresh.  
+- **Goals**: Make responses factually robust, keep knowledge fresh, and ensure security.  
 - **Key Tasks**:
-  - Add GraphCheck as a post-generation tool. 
-  - Implement ECL for incremental ingestion of new data and domain tagging. 
+  - Add GraphCheck as a post-generation tool with version-aware verification.
+  - Implement ECL for incremental ingestion and processing of version diffs.
   - Begin implementing performance metrics and structured logging for real-world usage.
+  - Make all components version-aware to support time-travel queries.
+  - Implement Role-Based Access Control with predefined roles and permissions.
+  - Add API key management for programmatic access.
+  - Enhance error handling and logging throughout the system.
 
 ### Phase 4: Production Hardening
 - **Goals**: Finalize security, stability, and reliability features for a production release.  
 - **Key Tasks**:
   - Thorough testing: unit, integration, system, performance, and load testing.
-  - Integrate authentication (token-based) and rate limiting in the MCP server.
+  - Enhance security with comprehensive audit logging, encryption, and rate limiting.
+  - Optimize performance with caching, batch processing, and query improvements.
   - Prepare for real-world data ingestion pipeline and user-facing endpoints.
+  - Implement monitoring and alerting systems for production deployment.
+  - Create comprehensive documentation for all components and APIs.
 
 ## 3. Testing and Validation Framework
 
 1. **Unit Tests**  
    - Validate the correctness of each individual module (e.g., TCR triple extraction, GraphCheck GNN inference).
    - Use pytest or a similar framework with code coverage reporting.
+   - Include specific tests for versioning, security, and data validation.
 
 2. **Integration Tests**  
    - Ensure that PathRAG, TCR, GraphCheck, and ECL work seamlessly together.
    - Mock out external dependencies like the LLM or a remote knowledge source, where needed.
+   - Test version-aware operations and security integrations.
 
 3. **System Tests**  
    - End-to-end tests where queries travel from the MCP server into the retrieval pipeline and back.
    - Evaluate correctness, latency, concurrency, and reliability.
+   - Test different roles and permissions to ensure proper access control.
 
 4. **Performance and Load Testing**  
    - Stress test the system using tools like Locust or JMeter, focusing on high volumes of parallel queries.
    - Benchmark ingestion pipeline performance when ingesting large volumes of data.
+   - Test the performance of version-aware queries against historical states.
+   - Verify that rate limiting functions correctly under load.
 
 ## 4. Deployment Considerations
 
@@ -82,6 +106,10 @@ Below is a general timeline suggesting how HADES might progress from proof-of-co
 - **DevOps**: 
   - Use systemd for local service management, as described in the base specification.
   - Integrate CI/CD pipelines (GitHub Actions or GitLab CI) for automated testing and deployments.
+- **Security Configuration**:
+  - Store master encryption keys and salts in secure environment variables.
+  - Implement proper key rotation and management procedures.
+  - Ensure audit logs are properly stored and analyzed.
 
 ## 5. Future Enhancements and Roadmap
 
@@ -92,13 +120,22 @@ Below is a general timeline suggesting how HADES might progress from proof-of-co
    - Incorporate domain-specific expansions by refining ECL embeddings for specialized fields (e.g., legal, medical).
 
 3. **Federated Knowledge Graph**  
-   - Connect multiple ArangoDB instances or incorporate other graph databases as “federated” data sources for cross-domain queries.
+   - Connect multiple ArangoDB instances or incorporate other graph databases as "federated" data sources for cross-domain queries.
 
 4. **Explainability and Audit Trails**  
    - Develop an interface that shows the user exactly which path (or chain of facts) was used to arrive at the final answer, enhancing trust and transparency.
 
 5. **Zero-Trust Security Model**  
-   - Further harden the MCP server with rotating keys, enhanced encryption, and role-based access controls.
+   - Further harden the RBAC system with Just-In-Time access, enhanced encryption, and attribute-based access controls.
+   - Implement security information and event monitoring (SIEM) integration.
+
+6. **Advanced Caching Strategies**
+   - Implement multi-level caching for frequent queries against common versions.
+   - Add distributed caching for horizontally scaled deployments.
+
+7. **Distributed Processing**
+   - Enhance the architecture to support distributed processing of queries and data ingestion.
+   - Implement sharding strategies for large-scale knowledge graphs.
 
 ## References
 
