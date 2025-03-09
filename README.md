@@ -1,148 +1,76 @@
-# Heuristic Adaptive Data Extraction System H.A.D.E.S. MCP Server
+# HADES - Hybrid Architecture for Dynamic Enrichment System
 
-This repository contains a **Model Context Protocol (MCP) Server** (nicknamed “HADES”) that integrates:
+HADES is a system that integrates a Large Language Model (LLM) with a graph-based knowledge repository, enabling contextually rich and factually verified responses to natural language queries. It combines several research innovations into a cohesive pipeline:
 
-- **ArangoDB** for document storage
-- **Milvus** for vector storage
-- **Pydantic** for configuration and validation
-- **Asyncio** and concurrency patterns to serve multiple clients
+- **PathRAG**: Graph-based path retrieval with relational pruning
+- **Triple Context Restoration (TCR)**: Restores natural language context around graph triples
+- **GraphCheck**: Post-generation fact verification mechanism
+- **External Continual Learner (ECL)**: Keeps knowledge base up-to-date without model retraining
 
-The server handles **search, query execution, and other operations** via a custom “tool” interface, enabling easy extension of capabilities.
+## Architecture Overview
 
-## 1. Environment Setup
+HADES organizes its components as a modular pipeline:
 
-Below is how you can create a fresh **Conda** environment for **Python 3.12** and install the necessary Python packages.
+1. **Large Language Model (LLM)**: Primary interface for interpreting queries and generating responses
+2. **Knowledge Graph Database (ArangoDB)**: Stores facts, documents, and relationships in a graph structure
+3. **Direct Database Integration (via MCP)**: Allows direct queries to ArangoDB
+4. **Retrieval & Enrichment**: PathRAG, TCR, and ECL components
+5. **GraphCheck Fact Verification**: Compares extracted claims against the knowledge graph
 
-1. **Create and activate** a new Conda environment:
+## Installation
 
-   ```bash
-   conda create -n hades python=3.12 -y
-   conda activate hades
-   ```
+### Prerequisites
 
-2. **Upgrade build tools** (helps avoid build issues on new Python versions):
+- Python 3.9+
+- ArangoDB 3.8+
+- Poetry for dependency management
 
-   ```bash
-   pip install --upgrade pip setuptools wheel
-   ```
+### Setup
 
-3. **Install project requirements**:
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/hades.git
+cd hades
 
-   ```bash
-   # Inside your hades environment
-   pip install -r requirements.txt
-   ```
+# Install dependencies
+poetry install
 
-Your `requirements.txt` might look like:
+# Configure environment variables
+cp .env.example .env
+# Edit .env with your configuration
 
-```text
-pydantic
-pydantic-settings
-arango
-pymilvus
-mcp
+# Run database setup
+poetry run python -m src.db.setup
 ```
 
-> **Note:**  
->
-> - The `mcp` package may be your internal or private library. Ensure you have access to it if it’s not on PyPI.  
-> - If `grpcio` or other native extensions fail to compile on Python 3.12, you may need to install them via conda-forge or use a specific version.
+## Development
 
-## 2. Sample Docker Setup (ArangoDB & Milvus)
+HADES development follows a phased approach:
 
-Below is a minimal **Docker Compose** snippet to spin up **ArangoDB** and **Milvus** for local testing. It uses default ports and sets example passwords. **Do not** use these in production.
+1. **Phase 1**: Core Architecture & Basic Retrieval
+2. **Phase 2**: Advanced Retrieval & TCR Integration
+3. **Phase 3**: Fact-Checking & Continual Learning
+4. **Phase 4**: Finalization & Production Readiness
 
-```yaml
-version: "3.8"
-services:
-  arangodb:
-    image: arangodb:3.12
-    container_name: arangodb
-    ports:
-      - "8529:8529"
-    environment:
-      - ARANGO_ROOT_PASSWORD=p@$$W0rd
+## Running HADES
 
-  milvus:
-    image: milvusdb/milvus:2.3.0
-    container_name: milvus
-    ports:
-      - "19530:19530"
-    environment:
-      - MILVUS_USER=root
-      - MILVUS_PASSWORD=p@$$W0rd
+```bash
+# Start the MCP server
+poetry run python -m src.mcp.server
+
+# In a separate terminal, run queries
+poetry run python -m src.cli.query "Your natural language query here"
 ```
 
-**Steps**:
+## Academic Research Foundation
 
-1. Save the file above as `docker-compose.yml`.  
-2. Run `docker-compose up -d`.  
-3. ArangoDB will be available at `http://localhost:8529` (user: `root`, pass: `p@$$W0rd`).  
-4. Milvus will be listening on `localhost:19530` (user: `root`, pass: `p@$$W0rd`).  
+HADES' design and implementation draw from the following research:
 
-You can now connect your MCP server to these services by configuring environment variables (e.g., `ARANGO_URL`, `ARANGO_USER`, `ARANGO_PASSWORD`, `MILVUS_HOST`, `MILVUS_PORT`, etc.).
+1. **PathRAG**: [Pruning Graph-based RAG with Relational Paths](https://arxiv.org/html/2502.14902v1)
+2. **Triple Context Restoration (TCR)**: [How to Mitigate Information Loss in Knowledge Graphs for GraphRAG](https://arxiv.org/html/2501.15378v1)
+3. **GraphCheck**: [Breaking Long-Term Text Barriers with Knowledge Graph-Powered Fact-Checking](https://arxiv.org/html/2502.16514v1)
+4. **External Continual Learning (ECL)**: [In-context Continual Learning Assisted by an External Continual Learner](https://arxiv.org/html/2412.15563v1)
 
-## 3. Integrating with Your RAG Solution
+## License
 
-This MCP server **assumes** you already have a retrieval-augmented generation pipeline or an LLM-based application that needs:
-
-- Document queries from **ArangoDB**  
-- Vector similarity searches from **Milvus**  
-
-You can wire these services together by:
-
-1. **Setting environment variables** that point to your local or remote ArangoDB and Milvus instances.
-2. **Starting the MCP server** (e.g., `python HADES-MCP-Server.py`) or however your main entry script is named.  
-3. **Sending requests** from your RAG system to the MCP server’s endpoints or via stdio protocol (depending on how your tool calls are orchestrated).
-
-## 4. Usage
-
-Once your databases are up and this server is installed:
-
-1. **Run the MCP server**:
-
-   ```bash
-   python HADES-MCP-Server.py
-   ```
-
-   or whichever file provides the MCP server entry point.
-
-2. **Check logs** to see if the server connected successfully to ArangoDB and Milvus. By **default**, logs are sent to **stdout**. You’ll see output like:
-
-   ```text
-   2024-01-02 12:34:56 - VectorDBMCPServer - INFO - <module>:123 - Vector DB MCP Server running
-   2024-01-02 12:34:56 - VectorDBMCPServer - INFO - <module>:124 - Connected to ArangoDB: _system
-   2024-01-02 12:34:56 - VectorDBMCPServer - INFO - <module>:125 - Connected to Milvus: localhost:19530
-   ```
-
-   If you want to **redirect logs** to a file instead of stdout, modify the `logging.basicConfig(...)` call in your script to specify a `filename=...` parameter.
-
-3. **Send requests** from your RAG solution or any other client. For example:
-   - A tool call to `execute_query` for running an AQL query  
-   - A tool call to `hybrid_search` for vector+doc retrieval  
-
-## 5. Troubleshooting
-
-- If **grpcio** fails to install for Python 3.12, try:
-  - `pip install --upgrade pip setuptools wheel`  
-  - `pip install grpcio==<some-version>` that provides wheels for 3.12  
-  - Or `conda install grpcio -c conda-forge`
-
-- Check **Docker logs**:
-
-  ```bash
-  docker logs arangodb
-  docker logs milvus
-  ```
-
-  to see if either service failed to start.
-
-- Make sure **credentials** in your environment match those in the `docker-compose.yml`.
-
-## 6. License & Support
-
-This code is offered **as is**, with no explicit license or warranty implied. Please reach out to the repository owner or your internal support channels for assistance.
-
----
-
-*Enjoy building your RAG workflows with the HADES MCP Server!*
+This project is licensed under the MIT License - see the LICENSE file for details.
