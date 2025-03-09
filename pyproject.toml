@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "hades"
+version = "0.1.0"
+description = "HADES - Heuristic Adaptive Data Extrapolation System"
+authors = ["HADES Team"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.105.0"
+uvicorn = "^0.24.0"
+python-arango = "^7.7.0"
+pydantic = "^2.5.2"
+httpx = "^0.25.2"
+transformers = "^4.36.0"
+torch = "^2.1.1"
+sentence-transformers = "^2.2.2"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.11.0"
+isort = "^5.12.0"
+flake8 = "^6.1.0"
+mypy = "^1.7.1"
+pytest = "^7.4.3"
+pytest-asyncio = "^0.21.1"
+pytest-cov = "^4.1.0"
+httpx = "^0.25.2"
+fastapi = {extras = ["testing"], version = "^0.105.0"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
