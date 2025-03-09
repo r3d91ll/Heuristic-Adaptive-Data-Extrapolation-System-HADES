@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "hades"
 version = "0.1.0"
-description = "HADES - Hybrid Architecture for Dynamic Enrichment System"
+description = "HADES - Heuristic Adaptive Data Extrapolation System"
 authors = ["HADES Team"]
 readme = "README.md"
 packages = [{include = "src"}]

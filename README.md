@@ -1,4 +1,4 @@
-# HADES - Hybrid Architecture for Dynamic Enrichment System
+# HADES - Heuristic Adaptive Data Extrapolation System
 
 HADES is a system that integrates a Large Language Model (LLM) with a graph-based knowledge repository, enabling contextually rich and factually verified responses to natural language queries. It combines several research innovations into a cohesive pipeline:
 
