@@ -29,7 +29,11 @@ class TripleContextRestoration:
         logger.info("Initializing Triple Context Restoration module")
     
     def find_similar_context(
-        self, triple: Dict[str, Any], limit: int = 3
+        self, 
+        triple: Dict[str, Any], 
+        limit: int = 3,
+        as_of_version: Optional[str] = None,
+        as_of_timestamp: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Find semantically similar sentences for a given triple.
@@ -37,12 +41,20 @@ class TripleContextRestoration:
         Args:
             triple: Dictionary containing subject, predicate, object
             limit: Maximum number of similar contexts to return
+            as_of_version: Optional version to query against
+            as_of_timestamp: Optional timestamp to query against
             
         Returns:
             List of similar context dictionaries
         """
         # In Phase 1, this is a stub implementation
         # In a full implementation, this would use ModernBERT-large embeddings
+        
+        # Log version information if present
+        if as_of_version:
+            logger.info(f"Using version: {as_of_version} for context retrieval")
+        if as_of_timestamp:
+            logger.info(f"Using timestamp: {as_of_timestamp} for context retrieval")
         
         # Construct a search query
         subject = triple.get("subject", {}).get("name", "")
@@ -64,18 +76,41 @@ class TripleContextRestoration:
             RETURN {
                 "text": context.text,
                 "source": context.source,
-                "relevance": context.relevance
+                "relevance": context.relevance,
+                "version": context.version
             }
         """
         
-        result = connection.execute_query(
-            aql_query,
-            bind_vars={
-                "subject": subject,
-                "object": object_name,
-                "limit": limit
-            }
-        )
+        # Execute with version constraints if specified
+        if as_of_version:
+            result = connection.execute_query(
+                aql_query,
+                bind_vars={
+                    "subject": subject,
+                    "object": object_name,
+                    "limit": limit
+                },
+                as_of_version=as_of_version
+            )
+        elif as_of_timestamp:
+            result = connection.execute_query(
+                aql_query,
+                bind_vars={
+                    "subject": subject,
+                    "object": object_name,
+                    "limit": limit
+                },
+                as_of_timestamp=as_of_timestamp
+            )
+        else:
+            result = connection.execute_query(
+                aql_query,
+                bind_vars={
+                    "subject": subject,
+                    "object": object_name,
+                    "limit": limit
+                }
+            )
         
         if not result["success"]:
             logger.error(f"Context retrieval failed: {result.get('error')}")
@@ -101,13 +136,18 @@ class TripleContextRestoration:
         return []
     
     def restore_context_for_path(
-        self, path: Dict[str, Any]
+        self, 
+        path: Dict[str, Any],
+        as_of_version: Optional[str] = None,
+        as_of_timestamp: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Restore context for all triples in a path.
         
         Args:
             path: A path dictionary from PathRAG
+            as_of_version: Optional version to query against
+            as_of_timestamp: Optional timestamp to query against
             
         Returns:
             The path with restored context
@@ -130,8 +170,12 @@ class TripleContextRestoration:
                 "object": path.get("target", {})
             }
             
-            # Find similar contexts
-            similar_contexts = self.find_similar_context(triple)
+            # Find similar contexts with version awareness
+            similar_contexts = self.find_similar_context(
+                triple,
+                as_of_version=as_of_version,
+                as_of_timestamp=as_of_timestamp
+            )
             
             # Add to our collection
             contexts.extend(similar_contexts)
@@ -139,10 +183,20 @@ class TripleContextRestoration:
         # Add the contexts to the enriched path
         enriched_path["contexts"] = contexts
         
+        # Add version info if provided
+        if as_of_version:
+            enriched_path["version"] = as_of_version
+        if as_of_timestamp:
+            enriched_path["timestamp"] = as_of_timestamp
+        
         return enriched_path
     
     def query_driven_feedback(
-        self, query: str, initial_response: str
+        self, 
+        query: str, 
+        initial_response: str,
+        as_of_version: Optional[str] = None,
+        as_of_timestamp: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Implement the Query-Driven Feedback mechanism of TCR.
@@ -153,6 +207,8 @@ class TripleContextRestoration:
         Args:
             query: The original query
             initial_response: The initial LLM response that may have knowledge gaps
+            as_of_version: Optional version to query against
+            as_of_timestamp: Optional timestamp to query against
             
         Returns:
             List of additional contexts that may fill knowledge gaps
@@ -162,7 +218,71 @@ class TripleContextRestoration:
         # and perform additional searches based on identified knowledge gaps
         
         logger.info("Query-driven feedback requested, but not fully implemented in Phase 1")
-        return []
+        
+        # In a more complete implementation, this would:
+        # 1. Analyze the response for uncertainty phrases like "I'm not sure"
+        # 2. Extract entities mentioned in both query and response
+        # 3. Use those entities to search for additional context within the specified version
+        
+        # For now, return an empty list with version info if provided
+        result = []
+        
+        if as_of_version or as_of_timestamp:
+            result.append({
+                "message": "Version-aware query-driven feedback not fully implemented",
+                "version": as_of_version,
+                "timestamp": as_of_timestamp
+            })
+        
+        return result
+    
+    def store_new_context(
+        self, 
+        text: str, 
+        source: str, 
+        relevance: float = 1.0
+    ) -> Dict[str, Any]:
+        """
+        Store new context in the knowledge graph with versioning.
+        
+        Args:
+            text: The context text
+            source: Source of the context
+            relevance: Relevance score (0-1)
+            
+        Returns:
+            Status of the operation
+        """
+        logger.info(f"Storing new context from source: {source}")
+        
+        # Create context document
+        context_doc = {
+            "text": text,
+            "source": source,
+            "relevance": relevance,
+            "created_at": None  # Will be added by versioning
+        }
+        
+        # Insert with versioning
+        result = connection.insert_document(
+            collection="contexts",
+            document=context_doc,
+            versioned=True
+        )
+        
+        if not result.get("success", False):
+            logger.error(f"Failed to store context: {result.get('error')}")
+            return {
+                "success": False,
+                "error": result.get("error")
+            }
+        
+        logger.info(f"Context stored successfully with version {result.get('result', {}).get('version', 'unknown')}")
+        return {
+            "success": True,
+            "context_id": result.get("result", {}).get("_id"),
+            "version": result.get("result", {}).get("version")
+        }
 
 
 # Create a global instance

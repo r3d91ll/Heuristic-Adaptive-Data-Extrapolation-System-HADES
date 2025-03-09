@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "hades"
 version = "0.1.0"
-description = "HADES - Heuristic Adaptive Data Extrapolation System"
+description = "HADES - Hybrid Architecture for Dynamic Enrichment System"
 authors = ["HADES Team"]
 readme = "README.md"
 packages = [{include = "src"}]
@@ -16,6 +16,8 @@ httpx = "^0.25.2"
 transformers = "^4.36.0"
 torch = "^2.1.1"
 sentence-transformers = "^2.2.2"
+matplotlib = "^3.8.0"
+networkx = "^3.2.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.11.0"
@@ -46,3 +48,7 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
+
+[tool.poetry.scripts]
+version-manager = "src.cli.version_manager:main"
+version-visualizer = "src.cli.version_visualizer:main"
