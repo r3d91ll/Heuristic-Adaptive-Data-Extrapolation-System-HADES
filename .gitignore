@@ -26,3 +26,8 @@ __pycache__
 __pycache__/*
 .pytest_cache
 .pytest_cache/*
+poetry.lock
+coverage.xml
+.venv/*
+.pytest_cache
+auth.db
