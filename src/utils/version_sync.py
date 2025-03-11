@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from src.db.connection import connection
+from src.db.connection import DBConnection
 from src.utils.logger import get_logger
 from src.utils.versioning import KGVersion, VersionMetadata, ChangeLog
 
@@ -130,12 +130,13 @@ class VersionSync:
             FILTER 
                 (log.previous_version == null OR log.previous_version >= start_v) AND
                 log.new_version <= end_v
-            
+                
             SORT log.timestamp ASC
             RETURN log
         """
         
-        result = connection.execute_query(
+        db_connection = DBConnection()
+        result = db_connection.execute_query(
             query,
             bind_vars={
                 "start_version": start_version,
@@ -175,18 +176,24 @@ class VersionSync:
         
         # Extract subgraphs for each affected entity
         subgraphs = []
+        db_connection = DBConnection()
         for entity_id in affected_entities:
-            subgraph = self._extract_entity_subgraph(entity_id)
+            subgraph = self._extract_entity_subgraph(db_connection, entity_id)
             if subgraph:
                 subgraphs.append(subgraph)
         
         return subgraphs
     
-    def _extract_entity_subgraph(self, entity_id: str) -> Optional[Dict[str, Any]]:
+    def _extract_entity_subgraph(
+        self, 
+        db_connection: DBConnection,
+        entity_id: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Extract a subgraph centered around an entity.
         
         Args:
+            db_connection: Database connection instance
             entity_id: Central entity ID
             
         Returns:
@@ -230,7 +237,7 @@ class VersionSync:
         }
         """
         
-        result = connection.execute_query(
+        result = db_connection.execute_query(
             query,
             bind_vars={"entity_id": entity_id}
         )
@@ -334,7 +341,8 @@ class VersionSync:
                 }
             """
             
-            result = connection.execute_query(
+            db_connection = DBConnection()
+            result = db_connection.execute_query(
                 query,
                 bind_vars={
                     "cutoff_date": cutoff_date,
@@ -407,7 +415,8 @@ class VersionSync:
                 RETURN log
             """
             
-            result = connection.execute_query(
+            db_connection = DBConnection()
+            result = db_connection.execute_query(
                 query,
                 bind_vars={"cutoff_date": cutoff_date}
             )
@@ -430,7 +439,7 @@ class VersionSync:
                 }
             
             # Remove old logs
-            with connection.get_db() as db:
+            with db_connection.get_db() as db:
                 removed_count = 0
                 for log in old_logs:
                     # Only remove logs if they're not the latest version for an entity
@@ -445,7 +454,7 @@ class VersionSync:
                         RETURN l
                     """
                     
-                    latest_result = connection.execute_query(
+                    latest_result = db_connection.execute_query(
                         latest_check_query,
                         bind_vars={"entity_id": entity_id}
                     )
@@ -480,4 +489,4 @@ class VersionSync:
 
 
 # Create a global instance
-version_sync = VersionSync() 
+version_sync = VersionSync()

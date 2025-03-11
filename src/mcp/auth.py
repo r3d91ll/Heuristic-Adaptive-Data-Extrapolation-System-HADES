@@ -3,6 +3,12 @@ Authentication and rate limiting for the HADES MCP server.
 
 This module implements token-based authentication and rate limiting
 for the Model Context Protocol (MCP) server.
+
+SQLite is used exclusively in this module for managing authentication
+and rate limiting, keeping these concerns separate from the main 
+knowledge graph data stored in ArangoDB. This separation of concerns
+provides a lightweight, embedded solution that's optimized for the
+specific needs of API key management and request limiting.
 """
 import hashlib
 import os
@@ -36,7 +42,17 @@ class APIKey(BaseModel):
 
 
 class AuthDB:
-    """Authentication database manager."""
+    """
+    Authentication database manager using SQLite.
+    
+    This class manages API keys, authentication, and rate limiting through a dedicated
+    SQLite database. SQLite is used exclusively for these authentication and security
+    concerns, which are separate from the main knowledge graph data stored in ArangoDB.
+    
+    This separation of responsibilities follows the principle of using the right tool
+    for the right job - SQLite providing a lightweight, embedded solution that's
+    optimized for the specific needs of API key management.
+    """
     
     def __init__(self):
         """Initialize the auth database."""

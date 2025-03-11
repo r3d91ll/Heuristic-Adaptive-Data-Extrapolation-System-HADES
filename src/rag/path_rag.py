@@ -1,113 +1,131 @@
+from typing import Any, Dict, List, Optional
 import logging
-from typing import List, Dict, Any, Optional
-from ..db.connection import get_db_connection
-from ..utils.versioning import KGVersion
+from src.db.connection import DBConnection
+
+logger = logging.getLogger(__name__)
 
 class PathRAG:
     """
-    PathRAG implementation based on graph path retrieval and pruning.
+    Path Retrieval-Augmented Generation (PathRAG) module for HADES.
+    
+    This module handles graph-based path retrieval and generation of responses.
     """
-    
-    def __init__(self, db_connection=None):
-        self.logger = logging.getLogger(__name__)
-        self.db = db_connection or get_db_connection()
-    
-    def retrieve(self, 
-                query: str, 
-                max_paths: int = 5, 
-                domain_filter: Optional[str] = None,
-                as_of_version: Optional[str] = None,
-                as_of_timestamp: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Retrieve paths from the knowledge graph based on query.
-        
-        Args:
-            query: The user query
-            max_paths: Maximum number of paths to retrieve
-            domain_filter: Optional domain to filter results
-            as_of_version: Optional version string to query the KG as it existed at a specific version
-            as_of_timestamp: Optional timestamp to query the KG as it existed at a specific time
-            
-        Returns:
-            List of paths with their nodes and edges
-        """
-        self.logger.info(f"Retrieving paths for query: {query}")
-        
-        # Version-aware query parameters
-        query_params = {
-            "query": query,
-            "max_paths": max_paths
-        }
-        
-        if domain_filter:
-            query_params["domain_filter"] = domain_filter
-            
-        # Handle version specification for time-travel queries
-        version_clause = ""
-        if as_of_version:
-            version = KGVersion.parse(as_of_version)
-            query_params["version"] = version.to_string()
-            version_clause = "FILTER doc.version <= @version"
-        elif as_of_timestamp:
-            query_params["timestamp"] = as_of_timestamp
-            version_clause = "FILTER doc.created_at <= @timestamp"
-        
-        # AQL query with version support
-        aql_query = f"""
-        FOR doc IN entities
-            {version_clause}
-            SEARCH ANALYZER(TOKENS(@query, "text_en") ALL IN TOKENS(doc.name, "text_en"), "text_en")
-            LIMIT 10
-            LET paths = (
-                FOR v, e, p IN 1..3 OUTBOUND doc relationships
-                    {version_clause}
-                    SORT LENGTH(p.edges) ASC
-                    LIMIT @max_paths
-                    RETURN p
-            )
-            RETURN {{
-                "start_entity": doc,
-                "paths": paths
-            }}
-        """
-        
-        cursor = self.db.aql.execute(aql_query, bind_vars=query_params)
-        results = [doc for doc in cursor]
-        
-        self.logger.info(f"Retrieved {len(results)} path results")
-        return results
 
-    def prune_paths(self, paths: List[Dict[str, Any]], threshold: float = 0.3) -> List[Dict[str, Any]]:
+    def __init__(self):
+        """Initialize the PathRAG module."""
+        logger.info("Initializing PathRAG module")
+        self.db_connection = DBConnection()
+        
+        # Ensure database connection is established
+        if not self.db_connection.connect():
+            raise Exception("Failed to connect to the database")
+
+    def retrieve_paths(
+        self,
+        query: str,
+        max_paths: int = 5,
+        domain_filter: Optional[str] = None,
+        as_of_version: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
-        Prune paths based on relevance score.
+        Retrieve paths from the knowledge graph.
         
         Args:
-            paths: List of paths retrieved from the KG
-            threshold: Minimum relevance score threshold
+            query: The query to retrieve paths for
+            max_paths: Maximum number of paths to retrieve
+            domain_filter: Optional domain filter
+            as_of_version: Optional version to query against
             
         Returns:
-            Filtered list of paths
+            Retrieved paths and metadata
         """
-        # Pruning logic implementation
-        pruned_paths = [p for p in paths if self._calculate_path_score(p) >= threshold]
-        self.logger.info(f"Pruned paths from {len(paths)} to {len(pruned_paths)}")
+        logger.info(f"Retrieving paths for query: {query}")
+        
+        # Placeholder for path retrieval logic using ArangoDB
+        try:
+            aql_query = f"""
+            FOR v, e, p IN 1..5 OUTBOUND 'entities/{query}' edges
+                FILTER p.vertices[*].domain ALL == @domain_filter OR NOT @domain_filter
+                RETURN {{
+                    "path": CONCAT_SEPARATOR(' -> ', p.vertices[*].name),
+                    "vertices": p.vertices,
+                    "score": LENGTH(p.vertices)
+                }}
+            """
+            
+            bind_vars = {
+                "domain_filter": domain_filter
+            }
+            
+            result = self.db_connection.execute_query(aql_query, bind_vars=bind_vars)
+            
+            if not result["success"]:
+                logger.error(f"Path retrieval failed: {result.get('error')}")
+                return {
+                    "success": False,
+                    "error": result.get("error")
+                }
+            
+            retrieved_paths = result["result"]
+            
+            # Prune paths based on heuristics
+            pruned_paths = self.prune_paths(retrieved_paths)
+            
+            # Sort paths by score in descending order and limit to max_paths
+            sorted_paths = sorted(pruned_paths, key=lambda x: x["score"], reverse=True)[:max_paths]
+            
+            logger.info(f"Retrieved {len(sorted_paths)} paths for query: {query}")
+            return {
+                "success": True,
+                "query": query,
+                "paths": sorted_paths
+            }
+        
+        except Exception as e:
+            logger.exception("An error occurred while retrieving paths")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def prune_paths(self, paths: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Prune paths based on heuristics.
+        
+        Args:
+            paths: List of retrieved paths
+        
+        Returns:
+            Pruned list of paths
+        """
+        pruned_paths = []
+        for path in paths:
+            # Example heuristic: prioritize shorter paths and vertices with higher confidence scores
+            score = self.calculate_score(path)
+            if score > 0:
+                pruned_paths.append({
+                    "path": path["path"],
+                    "vertices": path["vertices"],
+                    "score": score
+                })
         return pruned_paths
-    
-    def _calculate_path_score(self, path: Dict[str, Any]) -> float:
+
+    def calculate_score(self, path: Dict[str, Any]) -> float:
         """
-        Calculate relevance score for a path.
+        Calculate a score for a path based on heuristics.
         
         Args:
-            path: A single path from the KG
-            
+            path: Path to score
+        
         Returns:
-            Relevance score between 0.0 and 1.0
+            Calculated score
         """
-        # Path scoring implementation
-        # This is where the "resource flow" algorithm would be implemented
-        # For now, using a simple scoring approach
-        if "paths" in path and path["paths"]:
-            # Score inversely proportional to path length
-            avg_path_length = sum(len(p["edges"]) for p in path["paths"]) / len(path["paths"])
-            return 1.0 / (1.0 + avg_path_length)
-        return 0.0 
+        # Example heuristic: prioritize shorter paths and vertices with higher confidence scores
+        path_length = len(path["vertices"])
+        confidence_scores = [vertex.get("confidence", 1.0) for vertex in path["vertices"]]
+        average_confidence = sum(confidence_scores) / len(confidence_scores)
+        
+        # Score is a combination of path length and average confidence score
+        score = (1 / path_length) * average_confidence
+        
+        return score
