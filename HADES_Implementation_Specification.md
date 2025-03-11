@@ -217,7 +217,7 @@ db.changes.ensureIndex({ type: 'persistent', fields: ['document_id', 'version'] 
 ### 4.3 Security and Authentication
 
 - **Role-Based Access Control**: Implements RBAC with predefined roles and granular permissions.
-- **Token-Based Access**: Uses hashed tokens stored in a local SQLite database for authentication.
+- **Token-Based Access**: Uses hashed tokens stored in a dedicated SQLite database exclusively for authentication and rate limiting, keeping this separate from the main knowledge store.
 - **API Key Management**: Provides secure API key generation, validation, and revocation with expiration support.
 - **Rate Limiting**: Each user and API key can be restricted to a set number of requests per time window to prevent abuse.
 - **Audit Logging**: Records all security events for monitoring and compliance.

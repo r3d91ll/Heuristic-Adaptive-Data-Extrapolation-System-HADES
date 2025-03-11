@@ -1,23 +1,11 @@
-"""
-Core orchestrator for HADES.
-
-This module ties together all HADES components into a unified pipeline:
-- PathRAG for graph-based retrieval
-- TCR for triple context restoration
-- GraphCheck for fact verification
-- ECL for continual learning
-"""
 from typing import Any, Dict, List, Optional
+import logging
+from src.rag.path_rag import PathRAG
+from src.tcr.restoration import TripleContextRestoration
+from src.graphcheck.verification import GraphCheck
+from src.ecl.learner import ExternalContinualLearner
 
-from src.db.connection import connection
-from src.ecl.learner import ecl
-from src.graphcheck.verification import graphcheck
-from src.rag.pathrag import execute_pathrag
-from src.tcr.restoration import tcr
-from src.utils.logger import get_logger
-
-logger = get_logger(__name__)
-
+logger = logging.getLogger(__name__)
 
 class HADESOrchestrator:
     """
@@ -26,11 +14,15 @@ class HADESOrchestrator:
     This class coordinates all HADES components to process queries,
     retrieve knowledge, verify facts, and generate responses.
     """
-    
+
     def __init__(self):
         """Initialize the HADES orchestrator."""
         logger.info("Initializing HADES orchestrator")
-    
+        self.path_rag = PathRAG()
+        self.tcr = TripleContextRestoration()
+        self.graph_check = GraphCheck()
+        self.ecl = ExternalContinualLearner()
+
     def process_query(
         self, 
         query: str, 
@@ -67,152 +59,91 @@ class HADESOrchestrator:
         if as_of_timestamp:
             logger.info(f"Using timestamp: {as_of_timestamp}")
         
-        # Step 1: PathRAG Retrieval
-        pathrag_result = execute_pathrag(
-            query=query,
-            max_paths=max_results,
-            domain_filter=domain_filter,
-            as_of_version=as_of_version,
-            as_of_timestamp=as_of_timestamp
-        )
-        
-        if not pathrag_result.get("success", False):
-            logger.error(f"PathRAG retrieval failed: {pathrag_result.get('error')}")
-            return {
-                "success": False,
-                "error": f"Retrieval failed: {pathrag_result.get('error')}",
-                "query": query
-            }
-        
-        # Step 2: TCR Enrichment (for each path)
-        paths = pathrag_result.get("paths", [])
-        enriched_paths = []
-        
-        for path in paths:
-            enriched_path = tcr.restore_context_for_path(
-                path, 
+        try:
+            # Step 1: Retrieve paths using PathRAG
+            path_rag_result = self.path_rag.retrieve_paths(
+                query=query,
+                max_paths=max_results,
+                domain_filter=domain_filter,
                 as_of_version=as_of_version,
                 as_of_timestamp=as_of_timestamp
             )
-            enriched_paths.append(enriched_path)
-        
-        # Step 3: Generate initial LLM response
-        # In Phase 1, we'll use a mock response
-        initial_response = f"This is a placeholder response to the query: {query}"
-        
-        # Step 4: GraphCheck Verification
-        verification_result = graphcheck.verify_text(
-            initial_response,
-            as_of_version=as_of_version,
-            as_of_timestamp=as_of_timestamp
-        )
-        
-        # Step 5: Query-Driven Feedback and ECL
-        additional_contexts = tcr.query_driven_feedback(
-            query, 
-            initial_response,
-            as_of_version=as_of_version,
-            as_of_timestamp=as_of_timestamp
-        )
-        
-        # When doing historical queries, we need to get documents
-        # that were valid at that point in time
-        relevant_documents = ecl.suggest_relevant_documents(
-            query,
-            limit=max_results,
-            as_of_version=as_of_version
-        )
-        
-        # Step 6: Generate final response
-        # In Phase 1, we'll use a mock final response
-        if verification_result.get("verification_rate", 0) > 0.8:
-            final_response = initial_response
-        else:
-            final_response = f"I'm not confident about my answer to: {query}"
-        
-        # Compile the final result
-        result = {
-            "success": True,
-            "query": query,
-            "answer": final_response,
-            "paths": enriched_paths,
-            "verification": verification_result,
-            "additional_contexts": additional_contexts,
-            "relevant_documents": relevant_documents
-        }
-        
-        # Add version info if present
-        if as_of_version:
-            result["version"] = as_of_version
-        if as_of_timestamp:
-            result["timestamp"] = as_of_timestamp
             
-        return result
-    
-    def ingest_document(self, document: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Ingest a new document into the HADES knowledge graph.
-        
-        Args:
-            document: The document to ingest
+            if not path_rag_result["success"]:
+                logger.warning("No paths retrieved for the query")
+                return {
+                    "success": False,
+                    "error": "No paths retrieved"
+                }
             
-        Returns:
-            Status of the ingestion operation
-        """
-        logger.info(f"Ingesting document: {document.get('title', 'Untitled')}")
-        
-        # Delegate to ECL for ingestion
-        ingest_result = ecl.ingest_new_document(document)
-        
-        # Add versioning information to the response
-        if ingest_result.get("success", True):
-            logger.info(f"Document ingested successfully, version: {ingest_result.get('version', 'unknown')}")
-        
-        return ingest_result
-    
-    def get_version_history(self, collection: str, document_id: str) -> Dict[str, Any]:
-        """
-        Get the version history of a document.
-        
-        Args:
-            collection: Collection name
-            document_id: Document ID
+            paths = path_rag_result.get("paths", [])
+            logger.info(f"Retrieved {len(paths)} paths for query: {query}")
             
-        Returns:
-            Version history
-        """
-        logger.info(f"Getting version history for {document_id}")
-        
-        return connection.get_document_history(collection, document_id)
-    
-    def compare_versions(
-        self, 
-        collection: str, 
-        document_id: str, 
-        version1: str, 
-        version2: str
-    ) -> Dict[str, Any]:
-        """
-        Compare two versions of a document.
-        
-        Args:
-            collection: Collection name
-            document_id: Document ID
-            version1: First version to compare
-            version2: Second version to compare
+            # Step 2: Restore context using TCR
+            tcr_result = self.tcr.restore_context_for_path(paths)
             
-        Returns:
-            Difference between versions
-        """
-        logger.info(f"Comparing versions {version1} and {version2} for {document_id}")
+            if not tcr_result["success"]:
+                logger.warning("Context restoration failed")
+                return {
+                    "success": False,
+                    "error": tcr_result.get("error")
+                }
+            
+            restored_context = tcr_result.get("restored_context", [])
+            logger.info(f"Restored context for {len(restored_context)} triples")
+            
+            # Step 3: Verify response using GraphCheck
+            verification_results = self.graph_check.verify_claims(
+                claims=[{"text": rc["text"]} for rc in restored_context],
+                as_of_version=as_of_version,
+                as_of_timestamp=as_of_timestamp
+            )
+            
+            if not verification_results.get("success"):
+                logger.warning("Response verification failed")
+                return {
+                    "success": False,
+                    "error": verification_results.get("error")
+                }
+            
+            verified_claims = verification_results.get("claims", [])
+            logger.info(f"Verified {len(verified_claims)} claims")
+            
+            # Step 4: Update embeddings using ECL if necessary
+            ecl_result = self.ecl.update_embeddings(
+                domain=domain_filter or "default",
+                documents=[{"text": rc["text"]} for rc in restored_context],
+                incremental=True
+            )
+            
+            if not ecl_result["success"]:
+                logger.warning("Embedding update failed")
+                return {
+                    "success": False,
+                    "error": ecl_result.get("error")
+                }
+            
+            logger.info(f"Updated embeddings for domain: {domain_filter or 'default'}")
+            
+            # Construct the final response
+            response = {
+                "query": query,
+                "domain_filter": domain_filter,
+                "as_of_version": as_of_version,
+                "as_of_timestamp": as_of_timestamp,
+                "response": [claim["claim"] for claim in verified_claims],
+                "verified_claims": verified_claims
+            }
+            
+            logger.info(f"Processed query: {query}")
+            return {
+                "success": True,
+                **response
+            }
         
-        return connection.compare_versions(
-            collection=collection,
-            document_id=document_id,
-            version1=version1,
-            version2=version2
-        )
-
-
-# Create a global instance
-orchestrator = HADESOrchestrator()
+        except Exception as e:
+            logger.exception("An error occurred while processing the query")
+            return {
+                "success": False,
+                "error": str(e)
+            }

@@ -17,6 +17,8 @@ transformers = "^4.36.0"
 torch = "^2.1.1"
 sentence-transformers = "^2.2.2"
 matplotlib = "^3.8.0"
+spacy = "^3.5.1"
+
 networkx = "^3.2.0"
 
 [tool.poetry.group.dev.dependencies]
@@ -36,14 +38,14 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 88
-target-version = ["py39"]
+target-version = ["py311"]
 
 [tool.isort]
 profile = "black"
 line_length = 88
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
