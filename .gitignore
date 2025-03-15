@@ -31,3 +31,26 @@ coverage.xml
 .venv/*
 .pytest_cache
 auth.db
+
+# Environment variables and secrets
+.env
+.env.*
+!example.env
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# API keys and credentials
+*.pem
+*.key
+
+# Local development files
+.coverage
+htmlcov/
+.hypothesis/
+
+# Virtual environment
+.venv
+.venv/*
