@@ -19,9 +19,20 @@ class DatabaseConfig(BaseModel):
     database: str = Field(default="hades")
 
 
+class PostgreSQLConfig(BaseModel):
+    """PostgreSQL configuration."""
+    host: str = Field(default="localhost")
+    port: int = Field(default=5432)
+    username: str = Field(default="hades")
+    password: str = Field(default="")
+    database: str = Field(default="hades_auth")
+
+
 class AuthConfig(BaseModel):
     """Authentication configuration."""
-    db_path: str = Field(default="auth.db")
+    db_type: str = Field(default="postgresql")  # "sqlite" or "postgresql"
+    db_path: str = Field(default="auth.db")  # Used only for SQLite
+    pg_config: PostgreSQLConfig = Field(default_factory=PostgreSQLConfig)  # Used only for PostgreSQL
     enabled: bool = Field(default=False)
     token_expiry_days: int = Field(default=30)
     rate_limit_rpm: int = Field(default=60)  # Requests per minute
@@ -66,6 +77,32 @@ def load_config() -> AppConfig:
         if "auth" not in env_vars["mcp"]:
             env_vars["mcp"]["auth"] = {}
         env_vars["mcp"]["auth"]["db_path"] = auth_db_path
+    
+    # Set PostgreSQL config from env variables if provided
+    pg_host = os.getenv("HADES_PG_HOST")
+    pg_port = os.getenv("HADES_PG_PORT")
+    pg_user = os.getenv("HADES_PG_USER")
+    pg_pass = os.getenv("HADES_PG_PASSWORD")
+    pg_db = os.getenv("HADES_PG_DATABASE")
+    
+    if any([pg_host, pg_port, pg_user, pg_pass, pg_db]):
+        if "mcp" not in env_vars:
+            env_vars["mcp"] = {}
+        if "auth" not in env_vars["mcp"]:
+            env_vars["mcp"]["auth"] = {}
+        if "pg_config" not in env_vars["mcp"]["auth"]:
+            env_vars["mcp"]["auth"]["pg_config"] = {}
+        
+        if pg_host:
+            env_vars["mcp"]["auth"]["pg_config"]["host"] = pg_host
+        if pg_port:
+            env_vars["mcp"]["auth"]["pg_config"]["port"] = int(pg_port)
+        if pg_user:
+            env_vars["mcp"]["auth"]["pg_config"]["username"] = pg_user
+        if pg_pass:
+            env_vars["mcp"]["auth"]["pg_config"]["password"] = pg_pass
+        if pg_db:
+            env_vars["mcp"]["auth"]["pg_config"]["database"] = pg_db
     
     # Process environment variables
     for key, value in os.environ.items():

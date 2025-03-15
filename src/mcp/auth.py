@@ -4,21 +4,25 @@ Authentication and rate limiting for the HADES MCP server.
 This module implements token-based authentication and rate limiting
 for the Model Context Protocol (MCP) server.
 
-SQLite is used exclusively in this module for managing authentication
-and rate limiting, keeping these concerns separate from the main 
-knowledge graph data stored in ArangoDB. This separation of concerns
-provides a lightweight, embedded solution that's optimized for the
-specific needs of API key management and request limiting.
+PostgreSQL is used for managing authentication and rate limiting, keeping these 
+concerns separate from the main knowledge graph data stored in ArangoDB. 
+This separation of concerns provides a robust, scalable solution that's optimized 
+for the specific needs of API key management and request limiting.
+
+The module also supports SQLite as a fallback option for development and testing.
 """
 import hashlib
 import os
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 import sqlite3
+import psycopg2
+import psycopg2.extras
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
@@ -43,58 +47,126 @@ class APIKey(BaseModel):
 
 class AuthDB:
     """
-    Authentication database manager using SQLite.
+    Authentication database manager supporting both PostgreSQL and SQLite.
     
     This class manages API keys, authentication, and rate limiting through a dedicated
-    SQLite database. SQLite is used exclusively for these authentication and security
-    concerns, which are separate from the main knowledge graph data stored in ArangoDB.
+    database. PostgreSQL is the preferred backend for production use, providing robust
+    performance and scalability. SQLite is supported as a fallback for development
+    and testing environments.
     
-    This separation of responsibilities follows the principle of using the right tool
-    for the right job - SQLite providing a lightweight, embedded solution that's
-    optimized for the specific needs of API key management.
+    These authentication and security concerns are kept separate from the main 
+    knowledge graph data stored in ArangoDB, following the principle of using the 
+    right tool for the right job.
     """
     
     def __init__(self):
         """Initialize the auth database."""
+        self.db_type = config.mcp.auth.db_type
         self.db_path = config.mcp.auth.db_path
+        self.pg_config = config.mcp.auth.pg_config
+        
+        # For testing environments, try to connect to PostgreSQL first
+        # If it fails, fall back to SQLite
+        if self.db_type == "postgresql" and os.environ.get("HADES_ENV") == "test":
+            try:
+                # Try to connect to PostgreSQL
+                conn = psycopg2.connect(
+                    host=self.pg_config.host,
+                    port=self.pg_config.port,
+                    user=self.pg_config.username,
+                    password=self.pg_config.password,
+                    dbname=self.pg_config.database,
+                    connect_timeout=3  # Short timeout for testing
+                )
+                conn.close()
+                logger.info("Successfully connected to PostgreSQL for testing")
+            except Exception as e:
+                logger.warning(f"PostgreSQL connection failed in test environment: {e}")
+                logger.info("Falling back to SQLite for testing")
+                self.db_type = "sqlite"
+                self.db_path = ":memory:"
+        
         self.init_db()
     
-    def get_connection(self) -> sqlite3.Connection:
-        """Get a connection to the SQLite database."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    @contextmanager
+    def get_connection(self):
+        """Get a connection to the database (PostgreSQL or SQLite)."""
+        conn = None
+        try:
+            if self.db_type == "sqlite":
+                conn = sqlite3.connect(self.db_path)
+                conn.row_factory = sqlite3.Row
+            else:  # postgresql
+                conn = psycopg2.connect(
+                    host=self.pg_config.host,
+                    port=self.pg_config.port,
+                    user=self.pg_config.username,
+                    password=self.pg_config.password,
+                    dbname=self.pg_config.database
+                )
+                conn.cursor_factory = psycopg2.extras.DictCursor
+            yield conn
+        finally:
+            if conn:
+                conn.close()
     
     def init_db(self) -> None:
         """Initialize the database schema."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Create API keys table
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS api_keys (
-                key_id TEXT PRIMARY KEY,
-                key_hash TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT,
-                is_active BOOLEAN DEFAULT TRUE
-            )
-            """)
-            
-            # Create rate limits table
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS rate_limits (
-                key TEXT NOT NULL,
-                requests INTEGER DEFAULT 1,
-                window_start TEXT NOT NULL,
-                expires_at TEXT NOT NULL
-            )
-            """)
-            
-            # Add indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(key)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_expires ON rate_limits(expires_at)")
+            if self.db_type == "sqlite":
+                # Create API keys table for SQLite
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    key_id TEXT PRIMARY KEY,
+                    key_hash TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+                """)
+                
+                # Create rate limits table for SQLite
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rate_limits (
+                    key TEXT NOT NULL,
+                    requests INTEGER DEFAULT 1,
+                    window_start TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
+                )
+                """)
+                
+                # Add indexes for SQLite
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(key)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_expires ON rate_limits(expires_at)")
+            else:  # postgresql
+                # Create API keys table for PostgreSQL
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    key_id TEXT PRIMARY KEY,
+                    key_hash TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL,
+                    expires_at TIMESTAMP,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+                """)
+                
+                # Create rate limits table for PostgreSQL
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rate_limits (
+                    key TEXT NOT NULL,
+                    requests INTEGER DEFAULT 1,
+                    window_start TIMESTAMP NOT NULL,
+                    expires_at TIMESTAMP NOT NULL
+                )
+                """)
+                
+                # Add indexes for PostgreSQL
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(key)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_expires ON rate_limits(expires_at)")
             
             conn.commit()
     
@@ -113,20 +185,35 @@ class AuthDB:
         api_key = str(uuid.uuid4())
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
         
-        created_at = datetime.now().isoformat()
+        created_at = datetime.now()
         expires_at = None
         if expiry_days is not None:
-            expires_at = (datetime.now() + timedelta(days=expiry_days)).isoformat()
+            expires_at = created_at + timedelta(days=expiry_days)
         
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO api_keys (key_id, key_hash, name, created_at, expires_at, is_active)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (key_id, key_hash, name, created_at, expires_at, True)
-            )
+            
+            if self.db_type == "sqlite":
+                # Format datetime as ISO string for SQLite
+                created_at_str = created_at.isoformat()
+                expires_at_str = expires_at.isoformat() if expires_at else None
+                
+                cursor.execute(
+                    """
+                    INSERT INTO api_keys (key_id, key_hash, name, created_at, expires_at, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (key_id, key_hash, name, created_at_str, expires_at_str, True)
+                )
+            else:  # postgresql
+                cursor.execute(
+                    """
+                    INSERT INTO api_keys (key_id, key_hash, name, created_at, expires_at, is_active)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (key_id, key_hash, name, created_at, expires_at, True)
+                )
+            
             conn.commit()
         
         return key_id, api_key
@@ -148,14 +235,26 @@ class AuthDB:
         
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT key_id, name, created_at, expires_at, is_active 
-                FROM api_keys 
-                WHERE key_hash = ?
-                """,
-                (key_hash,)
-            )
+            
+            if self.db_type == "sqlite":
+                cursor.execute(
+                    """
+                    SELECT key_id, name, created_at, expires_at, is_active 
+                    FROM api_keys 
+                    WHERE key_hash = ?
+                    """,
+                    (key_hash,)
+                )
+            else:  # postgresql
+                cursor.execute(
+                    """
+                    SELECT key_id, name, created_at, expires_at, is_active 
+                    FROM api_keys 
+                    WHERE key_hash = %s
+                    """,
+                    (key_hash,)
+                )
+            
             row = cursor.fetchone()
             
             if not row:
@@ -166,14 +265,33 @@ class AuthDB:
                 return None
             
             # Check if the key has expired
-            if row["expires_at"] and datetime.fromisoformat(row["expires_at"]) < datetime.now():
-                return None
+            now = datetime.now()
+            expires_at = None
+            
+            if self.db_type == "sqlite" and row["expires_at"]:
+                # Convert ISO string to datetime for SQLite
+                expires_at = datetime.fromisoformat(row["expires_at"])
+                if expires_at < now:
+                    return None
+            elif self.db_type == "postgresql" and row["expires_at"]:
+                # PostgreSQL returns datetime objects directly
+                expires_at = row["expires_at"]
+                if expires_at < now:
+                    return None
+            
+            # Create APIKey object
+            created_at = row["created_at"]
+            if self.db_type == "sqlite":
+                # Convert ISO string to datetime for SQLite
+                created_at = datetime.fromisoformat(created_at)
+                if row["expires_at"]:
+                    expires_at = datetime.fromisoformat(row["expires_at"])
             
             return APIKey(
                 key_id=row["key_id"],
                 name=row["name"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
+                created_at=created_at,
+                expires_at=expires_at,
                 is_active=bool(row["is_active"])
             )
     
@@ -195,29 +313,45 @@ class AuthDB:
         
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
         now = datetime.now()
-        window_start = (now - timedelta(minutes=1)).isoformat()
-        expires_at = (now + timedelta(minutes=5)).isoformat()
+        window_start = now - timedelta(minutes=1)
+        expires_at = now + timedelta(minutes=5)
         
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
             # Clean up expired rate limits
-            cursor.execute(
-                "DELETE FROM rate_limits WHERE expires_at < ?",
-                (now.isoformat(),)
-            )
+            if self.db_type == "sqlite":
+                cursor.execute(
+                    "DELETE FROM rate_limits WHERE expires_at < ?",
+                    (now.isoformat(),)
+                )
+            else:  # postgresql
+                cursor.execute(
+                    "DELETE FROM rate_limits WHERE expires_at < %s",
+                    (now,)
+                )
             
             # Get current request count in the time window
-            cursor.execute(
-                """
-                SELECT SUM(requests) as total_requests
-                FROM rate_limits
-                WHERE key = ? AND window_start >= ?
-                """,
-                (key_hash, window_start)
-            )
-            row = cursor.fetchone()
+            if self.db_type == "sqlite":
+                cursor.execute(
+                    """
+                    SELECT SUM(requests) as total_requests
+                    FROM rate_limits
+                    WHERE key = ? AND window_start >= ?
+                    """,
+                    (key_hash, window_start.isoformat())
+                )
+            else:  # postgresql
+                cursor.execute(
+                    """
+                    SELECT SUM(requests) as total_requests
+                    FROM rate_limits
+                    WHERE key = %s AND window_start >= %s
+                    """,
+                    (key_hash, window_start)
+                )
             
+            row = cursor.fetchone()
             total_requests = row["total_requests"] if row and row["total_requests"] else 0
             
             # If we're already over the limit, deny the request
@@ -225,13 +359,23 @@ class AuthDB:
                 return False
             
             # Record this request
-            cursor.execute(
-                """
-                INSERT INTO rate_limits (key, requests, window_start, expires_at)
-                VALUES (?, 1, ?, ?)
-                """,
-                (key_hash, now.isoformat(), expires_at)
-            )
+            if self.db_type == "sqlite":
+                cursor.execute(
+                    """
+                    INSERT INTO rate_limits (key, requests, window_start, expires_at)
+                    VALUES (?, 1, ?, ?)
+                    """,
+                    (key_hash, now.isoformat(), expires_at.isoformat())
+                )
+            else:  # postgresql
+                cursor.execute(
+                    """
+                    INSERT INTO rate_limits (key, requests, window_start, expires_at)
+                    VALUES (%s, 1, %s, %s)
+                    """,
+                    (key_hash, now, expires_at)
+                )
+            
             conn.commit()
             
             return True

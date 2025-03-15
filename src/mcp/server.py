@@ -24,7 +24,7 @@ async def health_check():
         A simple response indicating the server is up and running
     """
     logger.info("Health check requested")
-    return {"status": "ok"}
+    return {"status": "healthy"}
 
 def get_current_key(token: str):
     """
