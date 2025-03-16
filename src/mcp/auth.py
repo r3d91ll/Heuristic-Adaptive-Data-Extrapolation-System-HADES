@@ -131,7 +131,7 @@ class AuthDB:
                 # Create rate limits table for SQLite
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS rate_limits (
-                    key TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
                     requests INTEGER DEFAULT 1,
                     window_start TEXT NOT NULL,
                     expires_at TEXT NOT NULL
@@ -139,7 +139,7 @@ class AuthDB:
                 """)
                 
                 # Add indexes for SQLite
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(key)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_key_id ON rate_limits(key_id)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_expires ON rate_limits(expires_at)")
             else:  # postgresql
                 # Create API keys table for PostgreSQL
@@ -157,7 +157,7 @@ class AuthDB:
                 # Create rate limits table for PostgreSQL
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS rate_limits (
-                    key TEXT NOT NULL,
+                    key_id TEXT NOT NULL,
                     requests INTEGER DEFAULT 1,
                     window_start TIMESTAMP NOT NULL,
                     expires_at TIMESTAMP NOT NULL
@@ -165,7 +165,7 @@ class AuthDB:
                 """)
                 
                 # Add indexes for PostgreSQL
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(key)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_key_id ON rate_limits(key_id)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_expires ON rate_limits(expires_at)")
             
             conn.commit()
@@ -337,7 +337,7 @@ class AuthDB:
                     """
                     SELECT SUM(requests) as total_requests
                     FROM rate_limits
-                    WHERE key = ? AND window_start >= ?
+                    WHERE key_id = ? AND window_start >= ?
                     """,
                     (key_hash, window_start.isoformat())
                 )
@@ -346,7 +346,7 @@ class AuthDB:
                     """
                     SELECT SUM(requests) as total_requests
                     FROM rate_limits
-                    WHERE key = %s AND window_start >= %s
+                    WHERE key_id = %s AND window_start >= %s
                     """,
                     (key_hash, window_start)
                 )
@@ -362,7 +362,7 @@ class AuthDB:
             if self.db_type == "sqlite":
                 cursor.execute(
                     """
-                    INSERT INTO rate_limits (key, requests, window_start, expires_at)
+                    INSERT INTO rate_limits (key_id, requests, window_start, expires_at)
                     VALUES (?, 1, ?, ?)
                     """,
                     (key_hash, now.isoformat(), expires_at.isoformat())
@@ -370,7 +370,7 @@ class AuthDB:
             else:  # postgresql
                 cursor.execute(
                     """
-                    INSERT INTO rate_limits (key, requests, window_start, expires_at)
+                    INSERT INTO rate_limits (key_id, requests, window_start, expires_at)
                     VALUES (%s, 1, %s, %s)
                     """,
                     (key_hash, now, expires_at)

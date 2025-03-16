@@ -21,6 +21,19 @@ from fastapi.testclient import TestClient
 # Import our test patches
 from tests.patch_auth import setup_test_environment, patch_server_module, patch_data_ingestion
 
+# Import real database fixtures
+try:
+    # Import fixtures from the consolidated test setup
+    from tests.unit.db.arango_conftest import *
+    from tests.unit.mcp.pg_conftest import *
+    
+    # Ensure test databases are set up
+    from tests.setup_test_databases import TestDatabaseSetup
+    # Initialize but don't force recreation during test runs
+    TestDatabaseSetup(force=False)
+except ImportError as e:
+    print(f"Warning: Could not import database fixtures: {e}")
+
 # Apply patches at the module level
 setup_test_environment()
 

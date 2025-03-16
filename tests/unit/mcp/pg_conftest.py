@@ -90,11 +90,24 @@ def real_pg_connection(create_test_database, pg_connection_params):
         pytest.skip(f"Could not connect to PostgreSQL: {e}")
 
 @pytest.fixture
-def real_auth_db(real_pg_connection):
+def real_auth_db(real_pg_connection, monkeypatch):
     """Create a real AuthDB instance with test database connection."""
+    # Patch the config to use our test connection parameters
+    from src.utils.config import config
+    
+    # Get the connection parameters
+    params = get_pg_params()
+    
+    # Patch the config with our test parameters
+    monkeypatch.setattr(config.mcp.auth, "db_type", "postgresql")
+    monkeypatch.setattr(config.mcp.auth.pg_config, "host", params["host"])
+    monkeypatch.setattr(config.mcp.auth.pg_config, "port", params["port"])
+    monkeypatch.setattr(config.mcp.auth.pg_config, "username", params["user"])
+    monkeypatch.setattr(config.mcp.auth.pg_config, "password", params["password"])
+    monkeypatch.setattr(config.mcp.auth.pg_config, "database", params["dbname"])
+    
     # Initialize the database tables
-    auth_db = AuthDB(connection=real_pg_connection)
-    auth_db.init_db()
+    auth_db = AuthDB()
     
     # Create a test API key for use in tests
     key_id, api_key = auth_db.create_api_key("test")
@@ -124,9 +137,13 @@ def real_server_auth(real_auth_db):
     # Create a real API key for testing
     auth_db = real_auth_db["db"]
     api_key = real_auth_db["api_key"]
+    key_id = real_auth_db["key_id"]
+    connection = real_auth_db["connection"]
     
-    # Return the real auth_db and API key
+    # Return the real auth_db, API key, key_id, and connection
     return {
         "auth_db": auth_db,
-        "api_key": api_key
+        "api_key": api_key,
+        "key_id": key_id,
+        "connection": connection
     }
