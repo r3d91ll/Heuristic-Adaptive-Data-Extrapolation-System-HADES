@@ -26,9 +26,10 @@ HADES organizes its components as a modular pipeline:
 ### Prerequisites
 
 - Python 3.9+
-- PostgreSQL 14+
-- ArangoDB 3.8+
+- PostgreSQL 14+ (native installation with dedicated 'hades' user) ✓
+- ArangoDB 3.8+ (via Docker for Ubuntu Noble 24.04 compatibility) ✓
 - Poetry for dependency management
+- High-end workstation (optimized for AMD Threadripper 7960X + 256GB RAM + 2x RTX A6000 GPUs)
 
 ### Setup
 
@@ -44,7 +45,8 @@ poetry install
 cp .env.example .env
 # Edit .env with your configuration
 
-# Setup system user and database roles
+# Update credentials for system user and database roles if needed
+# The 'hades' system user with password 'o$n^3W%QD0HGWxH!' and 'hades_test' database are already set up
 sudo scripts/rotate_hades_password.sh
 
 # Initialize databases
@@ -68,12 +70,18 @@ sudo scripts/rotate_hades_password.sh
 
 ## Development
 
-HADES development follows a phased approach:
+HADES development follows a clearly defined phased approach:
 
-1. **Phase 1**: Core Architecture & Basic Retrieval
-2. **Phase 2**: Advanced Retrieval & TCR Integration
-3. **Phase 3**: Fact-Checking & Continual Learning
-4. **Phase 4**: Finalization & Production Readiness
+1. **Phase 1**: Model Context Protocol (MCP) Server Foundation
+2. **Phase 2**: PathRAG Implementation
+3. **Phase 3**: Triple Context Restoration (TCR) & LLM Integration
+4. **Phase 4**: GraphCheck Validation & System Optimization
+5. **Phase 5**: Performance Enhancement & Mojo Migration
+6. **Phase 6**: Full Autonomous Intelligence
+
+This implementation order (MCP → PathRAG → TCR → LLM Analysis → GraphCheck) ensures each component builds upon a validated foundation, reducing cascading errors. The External Continual Learner (ECL) with `.hades` directories is integrated progressively throughout all phases.
+
+See [HADES_Development_Phases.md](HADES_Development_phases.md) for detailed timeline and [HADES_Implementation_Specification.md](HADES_Implementation_Specification.md) for component details.
 
 ## Running HADES
 

@@ -83,7 +83,7 @@ class MCPServer:
             }
         }
     
-    async def handle_client(self, websocket, path):
+    async def handle_client(self, websocket):
         """
         Handle client connection and messages.
         

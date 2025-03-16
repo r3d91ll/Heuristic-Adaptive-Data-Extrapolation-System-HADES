@@ -1,69 +1,173 @@
-# HADES_Implementation_Specification.md
+# HADES Implementation Specification
 
-## 1. Detailed Component Implementations
+## 1. Phased Implementation Approach
 
-### 1.1 PathRAG Retrieval
+HADES follows a systematic, incremental implementation approach, building each component upon a validated foundation. This minimizes cascading errors and ensures system robustness. The implementation order is explicitly defined as: **Model Context Protocol (MCP) Server → PathRAG → Triple Context Restoration (TCR) → LLM Analysis → GraphCheck Validation**.
 
-- **Core Logic**: Uses graph traversals within ArangoDB to identify paths that link query-relevant nodes.
-- **Pruning Mechanism**: Assigns a "resource flow" score to potential paths; distant or low-flow edges get pruned to reduce noise.
-- **Version-Aware Queries**: Supports querying the knowledge graph as it existed at specific versions or timestamps using version filters.
-- **Implementation References**: [PathRAG: Pruning Graph-based Retrieval Augmented Generation](https://arxiv.org/html/2502.14902v1)
+### 1.1 Model Context Protocol (MCP) Server Foundation (Initial Phase)
 
-### 1.2 Triple Context Restoration (TCR) and Query-Driven Feedback
+- **Initial Focus**: Basic WebSocket-based server implementation to enable communication between the LLM and tools
+- **Authentication**: PostgreSQL-based system user ('hades' with password 'o$n^3W%QD0HGWxH!') with credentials managed via the password rotation script (`scripts/rotate_hades_password.sh`)
+- **Database Integration**: 
+  - Set up native PostgreSQL ('hades_test' database) for authentication and user management, using real connections for testing rather than mocks
+  - Install and configure ArangoDB via Docker for Ubuntu Noble (24.04) compatibility with vector search capabilities
+  - Use optimization techniques for maximum performance
+- **Core Infrastructure**: Configure environment, system monitoring, and initial `.hades` directory structure
+- **Cross-References**: 
+  - See [HADES_Development_Phases.md](HADES_Development_phases.md) Phase 1 for timeline
+  - See [README.md](README.md) for setup instructions
 
-- **Context Enrichment**: For each triple (subject–predicate–object), TCR locates a semantically similar sentence from the original corpus using ModernBERT-large embeddings.
-- **Iterative Query Feedback**: If a partial LLM output indicates missing knowledge, TCR performs a dense vector search to fetch new, relevant context. Missing or newly discovered triples get added to the knowledge graph.
-- **Version Integration**: Captures context changes over time, allowing restoration of relevant context as it existed at specific versions.
-- **Implementation References**: [How to Mitigate Information Loss in Knowledge Graphs for GraphRAG](https://arxiv.org/html/2501.15378v1)
+### 1.2 PathRAG Retrieval (Second Phase)
 
-### 1.3 GraphCheck Fact Verification
+- **Core Logic**: Optimized graph traversals within ArangoDB to identify paths that link query-relevant nodes
+- **Pruning Mechanism**: Assigns a "resource flow" score to potential paths; distant or low-flow edges get pruned to reduce noise
+- **Version-Aware Queries**: Supports querying the knowledge graph as it existed at specific versions or timestamps
+- **Single-System Optimization**: Tailored for high-performance on local workstation with limited resources
+- **Implementation References**: 
+  - [PathRAG: Pruning Graph-based Retrieval Augmented Generation](https://arxiv.org/html/2502.14902v1)
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 2 for research foundation
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 2 for timeline
 
-- **Claim Extraction**: Parses the LLM's output into discrete factual claims.
-- **GNN-Based Verification**: Uses a graph neural network (GNN) to compare claims with the knowledge graph.
-- **Feedback Loop**: If invalid claims are detected, the system prompts the LLM to revise the response or flags it for human review.
-- **Version-Aware Verification**: Verifies claims against the knowledge graph as it existed at specific points in time.
-- **Implementation References**: [GraphCheck: Breaking Long-Term Text Barriers with Extracted Knowledge Graph-Powered Fact-Checking](https://arxiv.org/html/2502.16514v1)
+### 1.3 Triple Context Restoration (TCR) (Third Phase)
 
-### 1.4 External Continual Learner (ECL)
+- **Context Enrichment**: For each triple (subject–predicate–object), TCR locates semantically similar sentences from corpus using ModernBERT-large
+- **Vector Search Integration**: Introduced during vector retrieval to fetch additional contextual passages related to entities
+- **Version-Aware Restoration**: Captures context changes over time for historical queries
+- **Implementation References**: 
+  - [How to Mitigate Information Loss in Knowledge Graphs for GraphRAG](https://arxiv.org/html/2501.15378v1)
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3 for pipeline integration
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 3 for timeline
 
-- **Domain Clustering**: Maintains domain embeddings in a separate module, referencing them to identify relevant knowledge sources.
-- **Gaussians for Domain Representation**: Summarizes each domain with a distribution of embeddings; queries are filtered or ranked based on Mahalanobis distance.
-- **Incremental Updates**: Ingests new documents/data to keep domain representations in sync without retraining the LLM.
-- **Version-Driven Updates**: Processes changes between versions to efficiently update domain representations and generate training data.
-- **Implementation References**: [In-context Continual Learning Assisted by an External Continual Learner](https://arxiv.org/html/2412.15563v1)
+### 1.4 LLM Analysis (Fourth Phase)
 
-### 1.5 Differential Versioning System
+- **Joint Analysis**: The LLM synthesizes information from both PathRAG (graph structure) and TCR (contextual passages)
+- **Response Generation**: Produces coherent answers based on combined graph and vector context
+- **Human-Like Processing**: Mirrors how humans process structured and unstructured knowledge together
+- **Implementation References**:
+  - Leverages vLLM for GPU-accelerated inference on RTX A6000s
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.1 for LLM details
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 3 for timeline
 
-- **Semantic Versioning**: Uses a major.minor.patch versioning scheme to track knowledge graph evolution.
-- **Change Logging**: Records detailed change information including document IDs, change types, and before/after values.
-- **Time-Travel Queries**: Enables querying the knowledge graph as it existed at specific versions or timestamps.
-- **Diff Generation**: Computes differences between versions to enable efficient incremental updates and training data generation.
-- **Version Visualization**: Provides tools for visualizing version history and knowledge graph evolution over time.
+### 1.5 GraphCheck Fact Verification (Fifth Phase)
 
-### 1.6 Data Ingestion Pipeline
+- **Claim Extraction**: Parses the LLM's output into discrete factual claims
+- **GNN-Based Verification**: Uses a graph neural network to compare claims with the knowledge graph
+- **Feedback Loop**: If invalid claims are detected, the system prompts the LLM to revise the response or flags it for human review
+- **Implementation References**: 
+  - [GraphCheck: Breaking Long-Term Text Barriers with Extracted Knowledge Graph-Powered Fact-Checking](https://arxiv.org/html/2502.16514v1)
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3 for pipeline integration
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 4 for timeline
 
-- **Schema Validation**: Uses Pydantic models to validate incoming data against defined schemas.
-- **Multiple Validation Levels**: Supports strict, medium, and lenient validation modes to accommodate different data sources and quality requirements.
-- **Preprocessing & Normalization**: Automatically enriches and normalizes data during ingestion.
-- **Batch Processing**: Handles large data volumes efficiently through batched processing.
-- **Error Handling**: Provides comprehensive error tracking and reporting during all stages of ingestion.
+### 1.6 External Continual Learner (ECL) with `.hades` Directories (Integrated Throughout All Phases)
 
-### 1.7 Security and Authentication
+The ECL component is integrated throughout the implementation phases, with functionality expanded as the system matures. The ECL is integrated progressively during the PathRAG → TCR → LLM Analysis → GraphCheck implementation sequence:
 
-- **PostgreSQL-Based Authentication**: Uses PostgreSQL as the primary authentication database for both API and MCP servers.
-- **Role-Based Access Control**: Implements predefined roles (Admin, Editor, Analyst, Reader, API) with appropriate permission sets.
-- **Granular Permissions**: Defines specific permissions for different operations (read/write entities, manage users, etc.).
-- **Token & API Key Management**: Provides secure creation, validation, and revocation of authentication tokens and API keys.
-- **Rate Limiting**: Prevents abuse through configurable rate limits per user or API key.
-- **Audit Logging**: Records all security-related events for monitoring and analysis.
-- **Encryption**: Secures sensitive data using modern cryptographic methods with key derivation.
+- **`.hades` Directory Structure as Knowledge Silos**: 
+  - **Hierarchical Organization**:
+    - **Root `.hades`**: Project-level knowledge at repository root
+    - **Subdirectory `.hades`**: Module-specific knowledge in code subdirectories
+    - **Nested `.hades`**: Function or class-specific knowledge at deeper levels
+  - **Directory Contents**:
+    - `/raw`: Original documents and data files
+    - `/embeddings`: Pre-computed embeddings for efficient retrieval
+    - `/metadata`: Information about knowledge sources and relationships
+    - `hades_config.json`: Configuration for this knowledge silo
+  - **Cross-References**:
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.6 for system integration
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 1 for initial setup
+
+- **Auto-Discovery System**: 
+  - Uses filesystem events (via `inotify` on Linux) to detect changes in `.hades` directories
+  - Maintains a cached index of `.hades` locations for performance
+  - Implements precedence rules for overlapping knowledge domains
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 2 for implementation timeline
+
+- **Context-Aware Knowledge Management**: 
+  - **Hierarchical Context**: Prioritizes local `.hades` directories for queries originating within their filesystem scope
+  - **Context Fusion**: Weighs results from multiple `.hades` directories based on query relevance
+  - **Conflict Resolution**: Manages overlapping knowledge with precedence rules
+  - **Cross-References**:
+    - See [README_VERSIONING.md](README_VERSIONING.md) for versioning integration
+
+- **Actor-Network Theory (ANT) Implementation**:
+  - Treats files, functions, and dependencies as "actors" in a dynamic knowledge system
+  - Maps 2nd and 3rd-order dependencies through the knowledge graph
+  - Predicts cascading effects of changes through graph traversal
+  - **Cross-References**:
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 2.5 for theoretical foundation
+
+- **Knowledge Upload Mechanism**:
+  - Dropping files into `.hades` directories triggers automatic ingestion into ArangoDB
+  - Git integration syncs knowledge with code changes
+  - Automatic embedding updates when content changes
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 4 for automation features
+
+- **Incremental Learning**:
+  - New documents/data maintain domain representations without retraining the LLM
+  - Lazy-loading techniques avoid unnecessary computation
+  - Update prioritization based on access patterns and recent changes
+  - **Cross-References**:
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.6 for ECL details
+
+- **Version-Controlled Knowledge**:
+  - Processes diffs between versions to efficiently update domain representations
+  - Generates training data from version changes
+  - Tracks file history within each `.hades` directory for temporal context
+  - **Cross-References**:
+    - See [README_VERSIONING.md](README_VERSIONING.md) for version management details
+
+- **Implementation References**: 
+  - [In-context Continual Learning Assisted by an External Continual Learner](https://arxiv.org/html/2412.15563v1)
+  - [Actor-Network Theory: Tracking Relations of Human and Non-Human Elements](https://www.sciencedirect.com/topics/computer-science/actor-network-theory)
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 2 for all research foundations
+
+### 1.7 Differential Versioning System
+
+- **Semantic Versioning**: Uses a major.minor.patch versioning scheme to track knowledge graph evolution
+- **Change Logging**: Records detailed change information including document IDs, change types, and before/after values
+- **Time-Travel Queries**: Enables querying the knowledge graph as it existed at specific versions or timestamps
+- **Diff Generation**: Computes differences between versions to enable efficient incremental updates and training data generation
+- **Version Visualization**: Provides tools for visualizing version history and knowledge graph evolution over time
+- **Cross-References**:
+  - See [README_VERSIONING.md](README_VERSIONING.md) for complete versioning documentation
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 4 for implementation timeline
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.7 for system integration
+
+### 1.8 Data Ingestion Pipeline
+
+- **Schema Validation**: Uses Pydantic models to validate incoming data against defined schemas
+- **Multiple Validation Levels**: Supports strict, medium, and lenient validation modes to accommodate different data sources and quality requirements
+- **Preprocessing & Normalization**: Automatically enriches and normalizes data during ingestion
+- **Batch Processing**: Handles large data volumes efficiently through batched processing
+- **Error Handling**: Provides comprehensive error tracking and reporting during all stages of ingestion
+- **Cross-References**:
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 2 for initial implementation
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.8 for system integration
+
+### 1.9 Security and Authentication
+
+- **PostgreSQL-Based Authentication**: Uses PostgreSQL as the primary authentication database for both API and MCP servers
+- **Dedicated System User**: Creates and manages 'hades' system user with credentials managed by the `scripts/rotate_hades_password.sh` script for secure database authentication
+- **Test Database**: Configures 'hades_test' database with the 'hades' user as owner for consistent development testing
+- **Role-Based Access Control**: Implements predefined roles (Admin, Editor, Analyst, Reader, API) with appropriate permission sets
+- **Granular Permissions**: Defines specific permissions for different operations (read/write entities, manage users, etc.)
+- **Token & API Key Management**: Provides secure creation, validation, and revocation of authentication tokens and API keys
+- **Rate Limiting**: Prevents abuse through configurable rate limits per user or API key
+- **Audit Logging**: Records all security-related events for monitoring and analysis
+- **Encryption**: Secures sensitive data using modern cryptographic methods with key derivation
 - **Password Rotation**: Implements a secure password management system (`rotate_hades_password.sh`) that:
   - Manages the 'hades' system user across OS, PostgreSQL, and ArangoDB
   - Generates strong random passwords
   - Updates credentials in all relevant environment files
   - Maintains synchronization across all system components
+- **Cross-References**:
+  - See [README.md](README.md) for security and password management overview
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 1 for initial security setup
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.9 for security layer details
 
-### 1.8 Dual Server Architecture
+### 1.10 Dual Server Architecture
 
 - **API Server (`src/api/server.py`)**:
   - Implemented with FastAPI framework for robust, high-performance REST APIs
@@ -71,6 +175,9 @@
   - Handles standard request-response patterns with JSON payloads
   - Authentication via JWT tokens for stateless operation
   - Designed for general-purpose application interactions
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 3 for implementation timeline
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.2 for server details
 
 - **MCP Server (`src/mcp/server.py`)**:
   - Implemented with WebSockets for persistent, bidirectional communication
@@ -78,22 +185,29 @@
   - Maintains stateful sessions with connected clients
   - Provides a streamlined interface for registering and executing tools
   - Optimized for LLM integrations with lower latency requirements
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 1 for initial implementation
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.2 for server details
 
 - **Shared Components**:
-  - Both servers use the same PostgreSQL-based authentication system
+  - Both servers use the same PostgreSQL-based authentication system ('hades' user with 'hades_test' database)
   - Common utilities for database connections and configuration
+  - Real database connections for testing rather than mocks
+  - Native ArangoDB installation for optimal performance on Ubuntu Noble (24.04)
   - Shared data models for authentication and authorization
   - Consistent security practices across both implementations
 
-## 2. Code Samples and Patterns
+## 2. Code Samples and Implementation Patterns
 
-Below are illustrative snippets showing how components may be registered as "tools" under the Model Context Protocol (MCP) interface.
+Below are illustrative snippets showing how components will be implemented in a phased approach, following the development timeline outlined in [HADES_Development_phases.md](HADES_Development_phases.md).
+
+### 2.1 Phase 1-2: PathRAG Implementation
 
 ```python
-# Example: Updated PathRAG with version-aware queries
+# Phase 1-2: Implementation of PathRAG as an MCP tool
 def pathrag_tool(self, args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Execute PathRAG retrieval.
+    Execute PathRAG retrieval - first core component to be implemented.
     
     Args:
         args: PathRAG parameters
@@ -107,6 +221,7 @@ def pathrag_tool(self, args: Dict[str, Any]) -> Dict[str, Any]:
     as_of_version = args.get("as_of_version")
     as_of_timestamp = args.get("as_of_timestamp")
     
+    # Optimized for single-system architecture
     paths = self.path_rag.retrieve(
         query=query,
         max_paths=max_paths,
@@ -124,11 +239,55 @@ def pathrag_tool(self, args: Dict[str, Any]) -> Dict[str, Any]:
         "version": as_of_version,
         "timestamp": as_of_timestamp
     }
+```
 
-# Example: GraphCheck with version-aware verification
+### 2.2 Phase 3: Triple Context Restoration Implementation
+
+```python
+# Phase 3: Implementation of TCR as an MCP tool
+def tcr_tool(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Execute TCR to restore context around graph triples - second core component.
+    
+    Args:
+        args: TCR parameters
+        
+    Returns:
+        Enriched context for graph relationships
+    """
+    entity_id = args.get("entity_id", "")
+    relationship_types = args.get("relationship_types", [])
+    max_context_items = args.get("max_context_items", 5)
+    as_of_version = args.get("as_of_version")
+    
+    # Get relevant triples from PathRAG results
+    triples = self.knowledge_graph.get_entity_relationships(
+        entity_id=entity_id,
+        relationship_types=relationship_types,
+        as_of_version=as_of_version
+    )
+    
+    # Restore natural language context for each triple
+    enriched_context = self.tcr.restore_context(
+        triples=triples,
+        max_context_items=max_context_items
+    )
+    
+    return {
+        "entity_id": entity_id,
+        "enriched_context": enriched_context,
+        "context_count": len(enriched_context),
+        "version": as_of_version
+    }
+```
+
+### 2.3 Phase 4: GraphCheck Implementation
+
+```python
+# Phase 4: Implementation of GraphCheck as an MCP tool (final component)
 def graphcheck_tool(self, args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Execute GraphCheck verification.
+    Execute GraphCheck verification - final validation component.
     
     Args:
         args: GraphCheck parameters
@@ -155,11 +314,16 @@ def graphcheck_tool(self, args: Dict[str, Any]) -> Dict[str, Any]:
         "version": as_of_version,
         "timestamp": as_of_timestamp
     }
+```
 
-# Example: Security permission check
+### 2.4 Security and PostgreSQL Authentication Integration
+
+```python
+# Security permission check using PostgreSQL for authentication with 'hades' user
 def has_permission(self, user_or_key: str, permission: Permission, is_api_key: bool = False) -> bool:
     """
     Check if a user or API key has a specific permission.
+    Uses real PostgreSQL connection with 'hades' database user.
     
     Args:
         user_or_key: Username or API key ID
@@ -169,17 +333,29 @@ def has_permission(self, user_or_key: str, permission: Permission, is_api_key: b
     Returns:
         True if the user/key has the permission, False otherwise
     """
-    conn = sqlite3.connect(self.db_path)
+    # Use PostgreSQL for auth with 'hades' user (not SQLite as in early prototype)
+    import psycopg2
+    from psycopg2.extras import Json
+    
+    # Connect to hades_test database with hades user
+    # Password is managed by scripts/rotate_hades_password.sh and stored in environment
+    import os
+    conn = psycopg2.connect(
+        dbname="hades_test",
+        user="hades",
+        password=os.environ.get("HADES_PG_PASSWORD"),  # Set by password rotation script
+        host="localhost"
+    )
     cursor = conn.cursor()
     
     if is_api_key:
-        cursor.execute('''
-        SELECT permissions FROM api_keys WHERE key_id = ? AND is_active = 1
-        ''', (user_or_key,))
+        cursor.execute("""
+        SELECT permissions FROM api_keys WHERE key_id = %s AND is_active = TRUE
+        """, (user_or_key,))
     else:
-        cursor.execute('''
-        SELECT permissions FROM users WHERE username = ? AND is_active = 1
-        ''', (user_or_key,))
+        cursor.execute("""
+        SELECT permissions FROM users WHERE username = %s AND is_active = TRUE
+        """, (user_or_key,))
     
     result = cursor.fetchone()
     conn.close()
@@ -187,15 +363,194 @@ def has_permission(self, user_or_key: str, permission: Permission, is_api_key: b
     if not result:
         return False
     
-    permissions = json.loads(result[0])
+    permissions = result[0]  # PostgreSQL JSON type automatically converted
     
     # Check if the permission is in the list
     return permission.name in permissions
 ```
 
-## 3. Database Schema and Configuration
+### 2.5 Database Setup and Integration
 
-HADES uses ArangoDB as its primary knowledge store. The enhanced schema includes:
+```python
+# Setup script for native PostgreSQL and ArangoDB installation
+def setup_databases():
+    """
+    Set up databases for HADES with native installations:
+    - PostgreSQL with 'hades' user for authentication
+    - ArangoDB for graph-based knowledge storage on Ubuntu Noble (24.04)
+    Uses real connections rather than mocks for testing.
+    """
+    import os
+    import subprocess
+    import time
+    
+    # Create hades system user if it doesn't exist
+    subprocess.run(
+        "id -u hades || sudo useradd -m -s /bin/bash hades",
+        shell=True, check=True
+    )
+    
+    # Set up PostgreSQL for the hades user
+    print("Setting up PostgreSQL with 'hades' user and 'hades_test' database...")
+    
+    # Use the rotate_hades_password.sh script to manage passwords securely
+    # This avoids hardcoding passwords and ensures consistent credential management
+    script_path = os.path.join(PROJECT_DIR, "scripts", "rotate_hades_password.sh")
+    subprocess.run(
+        f"sudo {script_path}",  # This will generate a secure random password
+        shell=True, check=True
+    )
+    
+    # The password is now managed by the rotation script
+    subprocess.run(
+        "sudo -u postgres psql -c \"CREATE DATABASE hades_test WITH OWNER hades;\" || true",
+        shell=True, check=True
+    )
+    subprocess.run(
+        "sudo -u postgres psql -c \"ALTER ROLE hades SUPERUSER;\" || true",
+        shell=True, check=True
+    )
+    
+    # Set up ArangoDB natively for Ubuntu Noble (24.04)
+    print("Setting up ArangoDB for Ubuntu Noble (24.04)...")
+    
+    # Install ArangoDB using the official repository
+    print("Installing ArangoDB from the official repository...")
+    subprocess.run(
+        """sudo apt update && \
+        curl -OL https://download.arangodb.com/arangodb319/DEBIAN/Release.key && \
+        sudo apt-key add - < Release.key && \
+        echo 'deb https://download.arangodb.com/arangodb319/DEBIAN/ /' | \
+        sudo tee /etc/apt/sources.list.d/arangodb.list && \
+        sudo apt update && \
+        sudo apt install -y arangodb3""",
+        shell=True, check=True
+    )
+    print("Successfully installed ArangoDB native package")
+    
+    # Get the ArangoDB password from environment (set by the password rotation script)
+    # First source the env file created by the rotation script
+    source_cmd = f"source {PROJECT_DIR}/.env && echo $HADES_ARANGO_PASSWORD"
+    arango_password = subprocess.check_output(
+        source_cmd, shell=True, executable='/bin/bash', text=True
+    ).strip()
+    
+    # Configure ArangoDB with the secure password
+    print("Configuring ArangoDB with secure password...")
+    subprocess.run(
+        f"sudo arango-secure-installation --password '{arango_password}'",
+        shell=True, check=True
+    )
+    
+    # Enable and start ArangoDB service
+    print("Enabling and starting ArangoDB service...")
+    subprocess.run(
+        "sudo systemctl enable arangodb3 && sudo systemctl start arangodb3",
+        shell=True, check=True
+    )
+    
+    # Wait for ArangoDB to initialize
+    print("Waiting for ArangoDB to start...")
+    time.sleep(5)  # Give ArangoDB time to initialize
+    
+    # Verify ArangoDB is running
+    print("Verifying ArangoDB connection...")
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(("localhost", 8529))
+    s.close()
+    print("ArangoDB is running and accessible on port 8529")
+    
+    print("Databases setup complete!")
+    print("PostgreSQL: 'hades' user and 'hades_test' database")
+    print("ArangoDB: Should be accessible on port 8529 (check warnings if any)")
+```
+```
+
+## 3. Ordered Implementation Strategy
+
+The HADES system follows a phased implementation approach to ensure each component builds upon a validated foundation. This aligns directly with the development phases outlined in [HADES_Development_phases.md](HADES_Development_phases.md).
+
+### 3.1 Phase 1: MCP Server Foundation
+
+- **Model Context Protocol (MCP) Server** (First Component)
+  - Implemented as a WebSocket server for LLM interaction
+  - Provides tool registration and execution framework
+  - Integrates with PostgreSQL for authentication using dedicated 'hades' user
+  - Creates 'hades_test' database for development and testing
+  - Establishes base security infrastructure with RBAC
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 1 for detailed tasks
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.1 for core architecture
+
+### 3.2 Phase 2: PathRAG Implementation
+
+- **PathRAG** (First Retrieval Component)
+  - Builds graph traversal capabilities in ArangoDB (via Docker on Ubuntu Noble)
+  - Implements path pruning for noise reduction
+  - Creates version-aware query capabilities
+  - Focuses on efficient multi-hop retrieval
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 2 for implementation details
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.3 for component design
+
+### 3.3 Phase 3: Triple Context Restoration (TCR) Integration
+
+- **Triple Context Restoration (TCR)** (Second Retrieval Component)
+  - Enhances PathRAG results with natural language context
+  - Adds vector search for relevant passages
+  - Develops query-driven feedback loops
+  - Implements context enrichment algorithms
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 3 for implementation details
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.4 for component design
+
+### 3.4 Phase 4: LLM Analysis Integration
+
+- **LLM Analysis** (Third Pipeline Component)
+  - Synthesizes information from PathRAG and TCR
+  - Generates initial responses to user queries
+  - Interfaces with the MCP server for tool execution
+  - Handles structured and unstructured information
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 4 for implementation details
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.5 for component design
+
+### 3.5 Phase 5: GraphCheck Implementation
+
+- **GraphCheck** (Final Pipeline Component)
+  - Extracts claims from generated text
+  - Validates claims against knowledge graph
+  - Identifies and flags potential inconsistencies
+  - Provides confidence scores for verified statements
+  - Verifies LLM-generated content against the knowledge graph
+  - Implements graph neural networks for claim validation
+  - Creates feedback loops for response correction
+  - Ensures factual accuracy of final responses
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 5 for implementation details
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.6 for component design
+
+### 3.6 Phase 6: External Continual Learner (ECL) Development
+
+- **External Continual Learner (ECL)** (Knowledge Management)
+  - Implements `.hades` directory structure as knowledge silos
+  - Develops auto-discovery and event monitoring
+  - Creates domain embeddings for relevant knowledge retrieval
+  - Builds context fusion algorithms for multiple silos
+  - **Cross-References**:
+    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 6 for implementation details
+    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.7 for component design
+
+## 4. Database Schema and Configuration
+
+HADES uses a combination of PostgreSQL for authentication and ArangoDB as its primary knowledge store. Both databases are installed natively on Ubuntu Noble (24.04) for optimal performance and direct hardware access. The native installation provides several advantages:
+
+1. **Lower System Overhead** - Direct access to system resources without container layers
+2. **Optimized Performance** - Direct memory and CPU access for graph operations
+3. **Fine-tuned Configuration** - Ability to optimize database parameters for specific hardware
+
+The enhanced database schema includes:
 
 ```javascript
 // Creating document collections
@@ -227,22 +582,263 @@ db.changes.ensureIndex({ type: 'persistent', fields: ['document_id', 'version'] 
 - Include version metadata with each document and edge to enable efficient time-travel queries.
 - Consider time-based sharding for very large change logs to maintain performance over time.
 
-## 4. MCP Integration Details
+## 5. Environment Configuration
 
-### 4.1 MCP Server Overview
+For development and production, HADES is configured using environment variables, which are stored in a `.env` file at the repository root. This configuration supports native installations on Ubuntu Noble (24.04) for optimal performance.
+
+### Authentication Database (PostgreSQL)
+
+```env
+HADES_MCP__AUTH__DB_TYPE=postgresql
+HADES_PG_HOST=localhost
+HADES_PG_PORT=5432
+HADES_PG_USER=hades
+# Password is managed by scripts/rotate_hades_password.sh
+# HADES_PG_PASSWORD=[managed by password rotation script]
+HADES_PG_DATABASE=hades_test
+```
+
+> **Important**: All passwords are managed by the `scripts/rotate_hades_password.sh` script. DO NOT manually set passwords in environment files.
+
+### Knowledge Graph Database (ArangoDB)
+
+```env
+HADES_ARANGO_HOST=localhost
+HADES_ARANGO_PORT=8529
+HADES_ARANGO_USER=root
+# Password is managed by scripts/rotate_hades_password.sh
+# HADES_ARANGO_PASSWORD=[managed by password rotation script]
+HADES_ARANGO_DATABASE=hades_kg
+```
+
+### Configuration Best Practices
+
+Additional configuration tips to maximize performance on bare-metal installations:
+
+#### ArangoDB Native Optimizations
+
+```bash
+# CPU and Memory optimizations - add to /etc/arangodb3/arangod.conf
+[rocksdb]
+# Optimize for high-performance servers with plenty of RAM
+block-cache-size = 4294967296  # 4GB cache (adjust based on available RAM)
+max-total-wal-size = 1073741824  # 1GB (adjust based on write load)
+
+# Thread pool sizes for optimal core utilization
+[server]
+minimal-threads = 16  # Adjust based on available CPU cores
+
+# Performance tuning for vector indexing
+[index]
+# HNSW optimization for vector search performance
+hnsw.max-connections = 64  # Increase for better quality, decrease for better speed
+```
+
+#### PostgreSQL Native Optimizations
+
+```bash
+# Add to /etc/postgresql/14/main/postgresql.conf
+shared_buffers = 2GB  # 25% of RAM for dedicated DB servers
+work_mem = 128MB  # Increase for complex queries
+maintenance_work_mem = 256MB  # For index building
+effective_cache_size = 6GB  # 75% of RAM for DB caching estimates
+random_page_cost = 1.1  # Lower for SSD/NVMe storage
+```
+
+Note: For production environments, passwords should be managed securely through environment variables or secret management systems, not hardcoded in configuration files.
+
+## 6. `.hades` Directory Implementation Details
+
+### Directory Structure
+
+The `.hades` directories follow a standardized structure across all locations:
+
+```
+/path/to/project_or_module/
+├── .hades/
+│   ├── raw/
+│   │   ├── document1.md
+│   │   ├── document2.pdf
+│   │   └── ...
+│   ├── embeddings/
+│   │   ├── embeddings.pkl
+│   │   ├── vector_store.faiss
+│   │   └── ...
+│   ├── metadata/
+│   │   ├── sources.json
+│   │   ├── relationships.json
+│   │   └── ...
+│   └── hades_config.json
+├── src/
+│   ├── module1/
+│   │   ├── .hades/
+│   │   │   └── ...
+│   │   └── ...
+│   └── ...
+└── ...
+```
+
+### Configuration File Format
+
+Each `.hades` directory contains a `hades_config.json` file that defines its behavior:
+
+```json
+{
+  "name": "module_knowledge_silo",
+  "description": "Knowledge related to the specific module functionality",
+  "precedence": 50,  // Higher values take precedence when multiple silos match
+  "parent_silo": "../../../.hades",  // Path to parent silo for inheritance
+  "embedding_model": "modernbert-large",
+  "update_triggers": [
+    {
+      "type": "file_change",
+      "pattern": "*.py",
+      "action": "update_embeddings"
+    },
+    {
+      "type": "git_commit",
+      "action": "sync_with_kg"
+    }
+  ],
+  "relationships": [
+    {
+      "target_silo": "../../module2/.hades",
+      "relationship_type": "depends_on",
+      "strength": 0.8
+    }
+  ]
+}
+```
+
+### ECL Processing Algorithm
+
+The ECL processes `.hades` directories using the following algorithm:
+
+```python
+def process_hades_directories(query, context):
+    # Find relevant .hades directories based on the query context
+    relevant_silos = discover_hades_directories(context.working_directory)
+    
+    # Determine precedence and filtering
+    active_silos = filter_and_prioritize_silos(relevant_silos, query)
+    
+    # Extract embeddings from each relevant silo
+    combined_results = []
+    for silo in active_silos:
+        # Get embeddings and metadata from the silo
+        silo_results = query_silo(silo, query)
+        combined_results.extend(silo_results)
+    
+    # Perform context fusion to merge and rank results
+    fused_results = context_fusion(combined_results, query)
+    
+    return fused_results
+```
+
+## 7. Deployment Configuration
+
+### Native Service Management for Development
+
+For development on Ubuntu Noble (24.04), native service management provides optimal performance and direct hardware access through systemd:
+
+```bash
+# systemd service configuration for ArangoDB
+# File: /etc/systemd/system/arangodb3.service
+# This is managed by the standard installation, but can be customized for HADES needs
+
+[Unit]
+Description=ArangoDB Server
+After=network.target
+
+[Service]
+Type=simple
+User=arangodb
+Group=arangodb
+Environment=GLIBCXX_FORCE_NEW=1
+ExecStart=/usr/sbin/arangod --server.uid arangodb --server.gid arangodb
+LimitNOFILE=131072
+LimitNPROC=131072
+TimeoutSec=0
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# systemd service configuration for PostgreSQL
+# This is managed by the standard installation, but shown here for reference
+
+# Start, stop, or restart services with:
+sudo systemctl start postgresql
+sudo systemctl start arangodb3
+
+# Check service status with:
+sudo systemctl status postgresql
+sudo systemctl status arangodb3
+
+# Enable services to start at boot:
+sudo systemctl enable postgresql
+sudo systemctl enable arangodb3
+```
+```
+
+### Initialization Scripts
+
+```bash
+#!/bin/bash
+# setup_environment.sh
+
+# Get project root directory
+PROJECT_DIR="$(dirname "$(readlink -f "$0")")/.."
+
+# Create system user if it doesn't exist
+id -u hades &>/dev/null || sudo useradd -m -s /bin/bash hades
+
+# Set up PostgreSQL role and database
+sudo -u postgres psql -c "CREATE ROLE hades WITH LOGIN;" || true
+sudo -u postgres psql -c "CREATE DATABASE hades_test WITH OWNER hades;" || true
+sudo -u postgres psql -c "ALTER ROLE hades SUPERUSER;" || true
+
+# Run password rotation script to securely set and manage passwords
+# This will create the .env file with secure random passwords
+echo "Running password rotation script to set up secure credentials..."
+sudo "${PROJECT_DIR}/scripts/rotate_hades_password.sh"
+
+# Additional environment variables (passwords managed by rotation script)
+cat >> "${PROJECT_DIR}/.env" << EOL
+HADES_MCP__AUTH__DB_TYPE=postgresql
+HADES_PG_HOST=localhost
+HADES_PG_PORT=5432
+HADES_PG_USER=hades
+HADES_PG_DATABASE=hades_test
+
+HADES_ARANGO_HOST=localhost
+HADES_ARANGO_PORT=8529
+HADES_ARANGO_USER=root
+HADES_ARANGO_PASSWORD=rootpassword
+HADES_ARANGO_DATABASE=hades_kg
+EOL
+
+echo "Environment setup complete. Configuration written to .env"
+```
+
+## 8. MCP Integration Details
+
+### 8.1 MCP Server Overview
 
 - **Single Entry Point**: The MCP server is the only interface exposed externally, guaranteeing standardization and security.
 - **Transport Mechanisms**: HADES follows the recommended approach of using SSE (Server-Sent Events) and/or stdio for model access, as documented at [https://modelcontextprotocol.io/docs/concepts/transports](https://modelcontextprotocol.io/docs/concepts/transports).
 - **Class-Based Design**: Implements a modular, class-based design for better organization and extension.
 
-### 4.2 MCP Tools Implementation
+### 8.2 MCP Tools Implementation
 
 - **PathRAG, GraphCheck, TCR Tools**: Each functional block is registered as a "tool" with a well-defined JSON schema specifying inputs and outputs.
 - **Resource Exposure**: ArangoDB data can be exposed as resources (e.g., `kg://entities`) that can be read or updated through standardized MCP resource requests.
 - **Version-Aware Tools**: All tools support version and timestamp parameters for time-travel operations.
 - **ECL Tools**: Added methods for incremental updates and training data generation from version diffs.
 
-### 4.3 Security and Authentication
+### 8.3 Security and Authentication
 
 - **Role-Based Access Control**: Implements RBAC with predefined roles and granular permissions.
 - **Token-Based Access**: Uses hashed tokens stored in a dedicated SQLite database exclusively for authentication and rate limiting, keeping this separate from the main knowledge store.
@@ -251,7 +847,7 @@ db.changes.ensureIndex({ type: 'persistent', fields: ['document_id', 'version'] 
 - **Audit Logging**: Records all security events for monitoring and compliance.
 - **Encryption**: Secures sensitive data using Fernet symmetric encryption with key derivation.
 
-## 5. API and Interface Specifications
+## 9. API and Interface Specifications
 
 In addition to (or underneath) the MCP server, HADES may optionally expose RESTful or WebSocket endpoints for specialized integrations:
 

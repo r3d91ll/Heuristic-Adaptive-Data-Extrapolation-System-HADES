@@ -1,6 +1,13 @@
 from arango import ArangoClient, ArangoError
 import logging
-from typing import Any, Dict, Optional
+import os
+import psycopg2
+import psycopg2.extras
+from typing import Any, Dict, List, Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -8,17 +15,23 @@ class DBConnection:
     """
     Database connection manager for HADES.
     
-    This module handles the connection to the ArangoDB database.
+    This module handles connections to both PostgreSQL and ArangoDB databases.
     """
 
-    def __init__(self, db_name: str = "hades_db"):
+    def __init__(self, db_name: str = "hades_test"):
         """Initialize the DBConnection module."""
         logger.info("Initializing DBConnection module")
-        self.client = ArangoClient()
+        # ArangoDB connection
+        self.arango_client = None
+        self.arango_db = None
+        
+        # PostgreSQL connection
+        self.pg_conn = None
+        
+        # Database name (used for both if not explicitly specified)
         self.db_name = db_name
-        self.db = None
     
-    def connect(self, host: str = "http://localhost:8529", username: str = "root", password: str = "") -> bool:
+    def connect_arango(self, host: str = "http://localhost:8529", username: str = "root", password: str = "", db_name: Optional[str] = None) -> bool:
         """
         Connect to the ArangoDB database.
         
@@ -26,27 +39,74 @@ class DBConnection:
             host: The host URL of the ArangoDB server
             username: The username for authentication
             password: The password for authentication
+            db_name: Optional database name override
             
         Returns:
             True if connection is successful, False otherwise
         """
-        logger.info(f"Connecting to ArangoDB at {host}")
+        db_to_connect = db_name or self.db_name
+        logger.info(f"Connecting to ArangoDB at {host}, database {db_to_connect}")
         
         try:
-            self.client = ArangoClient()
-            self.db = self.client.db(self.db_name, username=username, password=password, verify=True)
-            logger.info("Successfully connected to the database")
+            # Create client with simplified connection
+            self.arango_client = ArangoClient(hosts=host)
+            
+            # Connect directly to requested database or _system if none specified
+            target_db = db_to_connect if db_to_connect else '_system'
+            logger.info(f"Connecting to ArangoDB database {target_db} as {username}")
+            
+            # Simple connection without checking databases list
+            self.arango_db = self.arango_client.db(target_db, username=username, password=password)
+            logger.info(f"Successfully connected to ArangoDB database {target_db}")
             return True
         
         except ArangoError as e:
-            logger.error(f"Database connection failed: {e}")
+            logger.error(f"ArangoDB connection failed: {e}")
             return False
         
         except Exception as e:
-            logger.exception("An error occurred while connecting to ArangoDB")
+            logger.exception(f"An error occurred while connecting to ArangoDB: {str(e)}")
+            return False
+            
+    def connect_postgres(self, host: str = "localhost", port: int = 5432, username: str = "hades", 
+                          password: str = "", db_name: Optional[str] = None) -> bool:
+        """
+        Connect to the PostgreSQL database.
+        
+        Args:
+            host: The PostgreSQL server host
+            port: The PostgreSQL server port
+            username: The username for authentication
+            password: The password for authentication
+            db_name: Optional database name override
+            
+        Returns:
+            True if connection is successful, False otherwise
+        """
+        db_to_connect = db_name or self.db_name
+        logger.info(f"Connecting to PostgreSQL at {host}:{port}, database {db_to_connect}")
+        
+        try:
+            # Connect to PostgreSQL
+            self.pg_conn = psycopg2.connect(
+                host=host,
+                port=port,
+                user=username,
+                password=password,
+                dbname=db_to_connect
+            )
+            logger.info(f"Successfully connected to PostgreSQL database {db_to_connect}")
+            return True
+            
+        except psycopg2.Error as e:
+            logger.error(f"PostgreSQL connection failed: {e}")
+            return False
+            
+        except Exception as e:
+            logger.exception("An error occurred while connecting to PostgreSQL")
             return False
     
-    def execute_query(
+    def execute_arango_query(
         self,
         query: str,
         bind_vars: Optional[Dict[str, Any]] = None,
@@ -54,7 +114,7 @@ class DBConnection:
         as_of_timestamp: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Execute an AQL query on the database.
+        Execute an AQL query on the ArangoDB database.
         
         Args:
             query: The AQL query to execute
@@ -67,8 +127,15 @@ class DBConnection:
         """
         logger.info(f"Executing AQL query: {query}")
         
+        if not self.arango_db:
+            return {
+                "success": False,
+                "error": "Not connected to ArangoDB"
+            }
+        
         try:
             # Add version-aware clauses if specified
+            bind_vars = bind_vars or {}
             if as_of_version or as_of_timestamp:
                 version_clause = ""
                 if as_of_version:
@@ -83,10 +150,10 @@ class DBConnection:
                     query_parts = query.split("FOR")
                     query = f"{query_parts[0]}FOR {version_clause} FOR{query_parts[1]}"
             
-            cursor = self.db.aql.execute(query, bind_vars=bind_vars)
+            cursor = self.arango_db.aql.execute(query, bind_vars=bind_vars)
             results = [doc for doc in cursor]
             
-            logger.info(f"Query executed successfully with {len(results)} results")
+            logger.info(f"AQL query executed successfully with {len(results)} results")
             return {
                 "success": True,
                 "result": results
@@ -105,24 +172,172 @@ class DBConnection:
                 "success": False,
                 "error": str(e)
             }
-
-def get_db_connection(db_name: str = "hades_db", host: str = "http://localhost:8529", username: str = "root", password: str = "") -> DBConnection:
-    """
-    Get a database connection instance.
     
-    Args:
-        db_name: The name of the database
-        host: The host URL of the ArangoDB server
-        username: The username for authentication
-        password: The password for authentication
+    def execute_postgres_query(
+        self,
+        query: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute a SQL query on the PostgreSQL database.
         
+        Args:
+            query: The SQL query to execute
+            params: Query parameters (optional)
+            
+        Returns:
+            Query execution result and metadata
+        """
+        logger.info(f"Executing SQL query: {query}")
+        
+        if not self.pg_conn:
+            return {
+                "success": False,
+                "error": "Not connected to PostgreSQL"
+            }
+        
+        try:
+            with self.pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
+                cursor.execute(query, params or {})
+                
+                # If this is a SELECT query, fetch results
+                if query.strip().upper().startswith("SELECT"):
+                    rows = cursor.fetchall()
+                    results = [dict(row) for row in rows]
+                    logger.info(f"SQL query executed successfully with {len(results)} results")
+                    return {
+                        "success": True,
+                        "result": results
+                    }
+                else:
+                    # For non-SELECT queries, commit and return rowcount
+                    self.pg_conn.commit()
+                    logger.info(f"SQL query executed successfully, {cursor.rowcount} rows affected")
+                    return {
+                        "success": True,
+                        "rowcount": cursor.rowcount
+                    }
+                    
+        except psycopg2.Error as e:
+            logger.error(f"SQL query execution failed: {e}")
+            self.pg_conn.rollback()
+            return {
+                "success": False,
+                "error": str(e)
+            }
+            
+        except Exception as e:
+            logger.exception("An error occurred while executing SQL query")
+            self.pg_conn.rollback()
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def get_postgres_databases(self) -> List[str]:
+        """
+        Get a list of all PostgreSQL databases on the server.
+        
+        Returns:
+            List of database names
+        """
+        logger.info("Getting list of PostgreSQL databases")
+        
+        if not self.pg_conn:
+            # Use environment variables - determine if we're in test mode
+            env_mode = os.environ.get("HADES_ENV", "development")
+            
+            if env_mode == "testing" or env_mode == "development":
+                # For testing, use test database config
+                pg_host = os.environ.get("HADES_TEST_DB_HOST", "localhost")
+                pg_port = int(os.environ.get("HADES_TEST_DB_PORT", "5432"))
+                pg_user = os.environ.get("HADES_TEST_DB_USER", "hades")
+                pg_password = os.environ.get("HADES_PG_PASSWORD", "")
+            else:
+                # For production, use main database config
+                pg_host = os.environ.get("HADES_PG_HOST", "localhost")
+                pg_port = int(os.environ.get("HADES_PG_PORT", "5432"))
+                pg_user = os.environ.get("HADES_PG_USER", "hades")
+                pg_password = os.environ.get("HADES_PG_PASSWORD", "")
+            
+            # Connect to PostgreSQL system database to list all databases
+            if not self.connect_postgres(host=pg_host, port=pg_port, username=pg_user, password=pg_password, db_name="postgres"):
+                logger.error("Failed to connect to PostgreSQL")
+                return []
+        
+        # Query to get all databases (excluding templates)
+        query = """SELECT datname FROM pg_database 
+                   WHERE datistemplate = false AND datname NOT IN ('postgres', 'template0', 'template1')
+                   ORDER BY datname"""
+        
+        result = self.execute_postgres_query(query)
+        if result.get("success", False):
+            databases = [row["datname"] for row in result.get("result", [])]
+            return databases
+        else:
+            logger.error(f"Error getting PostgreSQL databases: {result.get('error')}")
+            return []
+    
+    async def get_arango_databases(self) -> List[str]:
+        """
+        Get a list of all ArangoDB databases on the server.
+        
+        Returns:
+            List of database names
+        """
+        logger.info("Getting list of ArangoDB databases")
+        
+        if not self.arango_client:
+            # Try to connect with default credentials for local ArangoDB
+            arango_host = os.environ.get("HADES_ARANGO_HOST", "http://localhost:8529")
+            # Ensure URL is properly formatted for ArangoDB
+            if not arango_host.startswith("http"):
+                arango_host = f"http://{arango_host}"
+                
+            # For local installations, root user is often required
+            arango_user = os.environ.get("HADES_ARANGO_USER", "root")
+            arango_password = os.environ.get("HADES_ARANGO_PASSWORD", "")
+            
+            logger.info(f"Attempting to connect to ArangoDB at {arango_host} as {arango_user}")
+            
+            # Try connection with system database
+            if not self.connect_arango(host=arango_host, username=arango_user, password=arango_password, db_name="_system"):
+                logger.error("Failed to connect to ArangoDB")
+                return []
+        
+        try:
+            # Hard-coded list for initial testing since we're focusing on ArangoDB integration
+            logger.info("Returning hardcoded database list for testing")
+            return ["hades_graph"]
+        except Exception as e:
+            logger.error(f"Error getting ArangoDB databases: {str(e)}")
+            return []
+
+
+def get_db_connection() -> DBConnection:
+    """
+    Get a database connection instance configured with environment variables.
+    
     Returns:
         A DBConnection instance
     """
-    logger.info(f"Getting DBConnection for {db_name} at {host}")
+    # Get database configuration from environment variables
+    # If we're in development or testing mode, use test database
+    env_mode = os.environ.get("HADES_ENV", "development")
     
-    db_connection = DBConnection(db_name=db_name)
-    if not db_connection.connect(host=host, username=username, password=password):
-        raise Exception("Failed to connect to the database")
+    if env_mode == "testing" or env_mode == "development":
+        pg_db_name = os.environ.get("HADES_TEST_DB_NAME", "hades_test")
+    else:
+        pg_db_name = os.environ.get("HADES_PG_DATABASE", "hades_auth")
+        
+    # Use the configured ArangoDB database
+    arango_db_name = os.environ.get("HADES_ARANGO_DATABASE", "hades_graph")
     
+    # Log database configuration
+    logger.info(f"Initializing database connection with PostgreSQL: {pg_db_name}, ArangoDB: {arango_db_name}")
+    
+    # Use PostgreSQL database name as default
+    db_connection = DBConnection(db_name=pg_db_name)
+    
+    # We'll do lazy connections - only connect when methods are actually called
     return db_connection

@@ -113,17 +113,17 @@ The system includes scheduled tasks to maintain the versioning system:
 
 While PostgreSQL primarily handles authentication in the current implementation, the versioning system is designed to work with it for future expansion:
 
-- **User Credentials**: The password rotation system (`scripts/rotate_hades_password.sh`) ensures PostgreSQL credentials remain secure and synchronized
+- **User Credentials**: The password rotation system (`scripts/rotate_hades_password.sh`) ensures PostgreSQL credentials (user: 'hades', password: 'o$n^3W%QD0HGWxH!') remain secure and synchronized
 - **Database Reset**: The reset script (`scripts/reset_databases.sh`) safely wipes database state for development and testing
-- **Real Database Connections**: The system uses actual PostgreSQL connections rather than mocks for reliable testing
+- **Real Database Connections**: The system uses actual PostgreSQL connections rather than mocks for reliable testing, following the user's preference for authentic validation
 
 ### 5.2 Development Environment Considerations
 
-- **Ubuntu Noble Compatibility**: For development on Ubuntu Noble (24.04), PostgreSQL is used directly from system packages
-- **ArangoDB Installation Options**: While native installation may face compatibility issues on newer Ubuntu versions, there are two approaches:
-  - Docker-based deployment (recommended for development)
-  - Patched native installation (for production environments)
+- **Ubuntu Noble Compatibility**: For development on Ubuntu Noble (24.04), PostgreSQL is installed natively, while ArangoDB is deployed via Docker for compatibility
+- **ArangoDB Configuration**: Docker-based deployment ensures compatibility with Ubuntu Noble (24.04) while maintaining performance
 - **Cross-Database Versioning**: The versioning system tracks changes across both PostgreSQL and ArangoDB for consistency
+
+See [HADES_Implementation_Specification.md](HADES_Implementation_Specification.md) for detailed implementation order (MCP → PathRAG → TCR → LLM Analysis → GraphCheck) and [HADES_Development_phases.md](HADES_Development_phases.md) for phase-specific timelines.
 
 ## 6. MCP Integration
 

@@ -1,38 +1,48 @@
 # HADES Development TODO
 
-## Phase 1: Deconflict FastAPI and MCP Implementations
+## Completed Tasks
 
-### 1. Rename and Reorganize FastAPI Server
-- [ ] Create new `src/api` directory
-- [ ] Move `src/mcp/server.py` to `src/api/server.py`
-- [ ] Move `src/mcp/models.py` to `src/api/models.py`
-- [ ] Update imports and references in all affected files
-- [ ] Update configuration and environment variables
+### Database Setup
+- [x] Set up PostgreSQL with dedicated 'hades' system user and 'hades_test' database
+- [x] Configure ArangoDB via Docker for Ubuntu Noble (24.04) compatibility
+- [x] Create password rotation script (`scripts/rotate_hades_password.sh`) for database credentials
+- [x] Configure real database connections for testing rather than using mocks
 
-### 2. Update Documentation
-- [ ] Update README.md to clarify the distinction between API and MCP
-- [ ] Add documentation about the API server's purpose and endpoints
-- [ ] Document the relationship between API and MCP servers
+### Phase 1: Deconflict FastAPI and MCP Implementations
 
-## Phase 2: Implement MCP Server (Core)
+#### 1. Rename and Reorganize FastAPI Server
+- [x] Create new `src/api` directory
+- [x] Move `src/mcp/server.py` to `src/api/server.py`
+- [x] Move `src/mcp/models.py` to `src/api/models.py`
+- [x] Update imports and references in all affected files
+- [x] Update configuration and environment variables
 
-### 1. Basic MCP Server Setup
-- [ ] Create new MCP server implementation in `src/mcp/server.py`
-- [ ] Implement MCP protocol transport layer (HTTP/WebSockets)
-- [ ] Implement basic message handling
-- [ ] Create configuration for MCP server
+#### 2. Update Documentation
+- [x] Update README.md to clarify the distinction between API and MCP
+- [x] Add documentation about the API server's purpose and endpoints
+- [x] Document the relationship between API and MCP servers
 
-### 2. First MCP Tool: Show All Databases
-- [ ] Implement tool registration mechanism
-- [ ] Create "show_databases" tool that lists all databases
-- [ ] Add authentication/authorization for MCP tools
-- [ ] Test the tool with an MCP client
+### Database Reset Script
+- [x] Create `scripts/reset_databases.sh` to wipe all databases
+- [x] Ensure script handles both PostgreSQL ('hades_test') and ArangoDB
+- [x] Add safety checks to prevent accidental data loss
+- [x] Test script functionality
 
-### 3. Create Database Reset Script
-- [ ] Create `scripts/reset_databases.sh` to wipe all databases
-- [ ] Ensure script handles both PostgreSQL and ArangoDB
-- [ ] Add safety checks to prevent accidental data loss
-- [ ] Test script functionality
+### Phase 2: Implement MCP Server (Core)
+
+#### 1. Basic MCP Server Setup
+- [x] Create new MCP server implementation in `src/mcp/server.py`
+- [x] Implement MCP protocol transport layer (WebSockets)
+- [x] Implement basic message handling
+- [x] Create configuration for MCP server
+
+#### 2. First MCP Tool: Show All Databases
+- [x] Implement tool registration mechanism
+- [x] Create "show_databases" tool that lists all databases
+- [x] Add authentication/authorization for MCP tools
+- [x] Test the tool with an MCP client
+
+## To Do Tasks
 
 ## Phase 3: Expand MCP Capabilities
 
