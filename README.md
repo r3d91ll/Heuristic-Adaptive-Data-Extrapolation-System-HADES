@@ -12,8 +12,12 @@ HADES is a system that integrates a Large Language Model (LLM) with a graph-base
 HADES organizes its components as a modular pipeline:
 
 1. **Large Language Model (LLM)**: Primary interface for interpreting queries and generating responses
-2. **Knowledge Graph Database (ArangoDB)**: Stores facts, documents, and relationships in a graph structure
-3. **Direct Database Integration (via MCP)**: Allows direct queries to ArangoDB
+2. **Dual Server Architecture**:
+   - **API Server (FastAPI)**: REST API for general client interactions
+   - **MCP Server (WebSockets)**: Direct model integration and tool execution
+3. **Database Systems**:
+   - **PostgreSQL**: Handles user authentication and authorization
+   - **ArangoDB**: Stores facts, documents, and relationships in a document, vector, and graph structures
 4. **Retrieval & Enrichment**: PathRAG, TCR, and ECL components
 5. **GraphCheck Fact Verification**: Compares extracted claims against the knowledge graph
 
@@ -22,6 +26,7 @@ HADES organizes its components as a modular pipeline:
 ### Prerequisites
 
 - Python 3.9+
+- PostgreSQL 14+
 - ArangoDB 3.8+
 - Poetry for dependency management
 
@@ -39,8 +44,26 @@ poetry install
 cp .env.example .env
 # Edit .env with your configuration
 
-# Run database setup
-poetry run python -m src.db.setup
+# Setup system user and database roles
+sudo scripts/rotate_hades_password.sh
+
+# Initialize databases
+scripts/reset_databases.sh
+```
+
+## Security and Password Management
+
+HADES includes a password rotation script that:
+- Manages the 'hades' system user
+- Updates PostgreSQL and ArangoDB authentication
+- Generates secure random passwords
+- Synchronizes credentials across all components
+- Updates environment files with new credentials
+
+To rotate passwords:
+
+```bash
+sudo scripts/rotate_hades_password.sh
 ```
 
 ## Development
@@ -55,7 +78,10 @@ HADES development follows a phased approach:
 ## Running HADES
 
 ```bash
-# Start the MCP server
+# Start the API server
+poetry run python -m src.api.server
+
+# Start the MCP server (in a separate terminal)
 poetry run python -m src.mcp.server
 
 # In a separate terminal, run queries

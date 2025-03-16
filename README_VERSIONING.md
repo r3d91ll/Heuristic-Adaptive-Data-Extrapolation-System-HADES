@@ -25,6 +25,7 @@ The differential versioning system captures changes to the knowledge graph in a 
 - Versioned document insertion and updates
 - Change logging for tracking history
 - Time-travel queries using version or timestamp filters
+- Integration with PostgreSQL (authentication) and ArangoDB (knowledge graph)
 
 ### 2.3 Synchronization Tools (`src/utils/version_sync.py`)
 
@@ -104,8 +105,27 @@ The system includes scheduled tasks to maintain the versioning system:
 - **Compact Changes**: Combines small changes into larger snapshots
 - **Clean Up Old Versions**: Removes outdated versions based on retention policy
 - **Generate Training Data**: Creates incremental training data from recent changes
+- **Security Synchronization**: Maintains consistent security state with the password rotation system
 
-## 5. MCP Integration
+## 5. Database and Security Integration
+
+### 5.1 PostgreSQL Integration
+
+While PostgreSQL primarily handles authentication in the current implementation, the versioning system is designed to work with it for future expansion:
+
+- **User Credentials**: The password rotation system (`scripts/rotate_hades_password.sh`) ensures PostgreSQL credentials remain secure and synchronized
+- **Database Reset**: The reset script (`scripts/reset_databases.sh`) safely wipes database state for development and testing
+- **Real Database Connections**: The system uses actual PostgreSQL connections rather than mocks for reliable testing
+
+### 5.2 Development Environment Considerations
+
+- **Ubuntu Noble Compatibility**: For development on Ubuntu Noble (24.04), PostgreSQL is used directly from system packages
+- **ArangoDB Installation Options**: While native installation may face compatibility issues on newer Ubuntu versions, there are two approaches:
+  - Docker-based deployment (recommended for development)
+  - Patched native installation (for production environments)
+- **Cross-Database Versioning**: The versioning system tracks changes across both PostgreSQL and ArangoDB for consistency
+
+## 6. MCP Integration
 
 The versioning system is exposed through the MCP server as tools:
 
@@ -114,7 +134,7 @@ The versioning system is exposed through the MCP server as tools:
 - `kg_query_as_of_version`: Query the knowledge graph as it existed at a specific version
 - `kg_generate_training_data`: Generate training data from changes
 
-## 6. Dependencies
+## 7. Dependencies
 
 The visualization tools require additional dependencies:
 

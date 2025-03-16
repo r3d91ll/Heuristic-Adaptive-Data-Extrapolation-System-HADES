@@ -48,14 +48,24 @@ HADES organizes its components as a modular pipeline with a layered architecture
    - Serves as the primary interface for interpreting queries and generating responses.
    - Uses augmented knowledge rather than domain-specific fine-tuning.
 
-2. **Knowledge Graph Database (ArangoDB)**  
-   - Stores all facts, documents, and relationships in a graph structure.
-   - Provides efficient multi-hop queries for advanced reasoning.
-   - Integrates version tracking to maintain history of all changes.
+2. **Dual Server Architecture**  
+   - **API Server (FastAPI)**: Provides a RESTful HTTP interface for general clients and applications.
+   - **MCP Server (WebSockets)**: Offers a persistent connection for direct model integration and tool execution.
+   - The servers are implemented separately to maintain clear separation of concerns.
 
-3. **Direct Database Integration (via MCP)**  
-   - Removes the need for a separate HTTP API layer.
-   - The LLM and supporting modules can issue queries directly to ArangoDB, reducing latency and boosting transparency in debugging.
+3. **Database Systems**  
+   - **PostgreSQL**: 
+     - Handles user authentication and authorization for both API and MCP servers.
+     - Currently focused primarily on security functions, with expanded SQL-based tools planned for future phases.
+     - Chosen for its robust security features and compatibility with the existing authentication framework.
+   - **ArangoDB**:  
+     - Serves as the primary knowledge graph database storing facts, documents, and relationships.
+     - Provides efficient multi-hop queries for advanced reasoning.
+     - Integrates version tracking to maintain history of all changes.
+
+4. **Direct Database Integration**  
+   - Removes the need for intermediate layers when accessing databases.
+   - Both PostgreSQL and ArangoDB are directly accessible to services, improving performance and transparency.
 
 4. **Retrieval & Enrichment**  
    - **PathRAG**: Graph-based path retrieval that identifies coherent paths of knowledge, rather than retrieving disjoint facts. Supports version-aware queries and time-travel.
@@ -120,9 +130,11 @@ Below is a simplified interaction flow, illustrating how user queries move throu
 
 ## 5. Technical Design Decisions and Rationale
 
-1. **MCP Server Integration**  
-   - Ensures all external access is standardized and securely mediated.
-   - Minimizes overhead by allowing direct calls to the database driver rather than an extra REST layer.
+1. **Dual Server Architecture**  
+   - **API Server**: Provides a standardized REST interface for traditional clients (web/mobile apps).
+   - **MCP Server**: Creates a specialized WebSocket interface for model integration and efficient tool execution.
+   - This separation allows each server to specialize in its specific use case while sharing the same authentication infrastructure.
+   - Minimizes overhead by allowing direct calls to database drivers rather than additional intermediate layers.
 
 2. **Graph-Based Retrieval**  
    - A graph model (ArangoDB) is more flexible for multi-hop queries than a traditional relational or flat search index.
@@ -136,14 +148,18 @@ Below is a simplified interaction flow, illustrating how user queries move throu
    - Real-time verification of LLM outputs addresses the "hallucination" problem and bolsters factual correctness.
    - GraphCheck's GNN approach effectively leverages local graph neighborhoods to verify discrete claims.
 
-5. **Direct Database Coupling**  
-   - Reduces latency by bypassing a conventional HTTP service layer.
-   - Eases troubleshooting, as both the LLM queries and the database logs can be analyzed in one place.
+5. **Database Strategy**  
+   - **PostgreSQL for Authentication**: Provides robust security and user management with minimal overhead.
+   - **ArangoDB for Knowledge Graph**: Optimized for graph operations and multi-hop queries.
+   - **Direct Database Coupling**: Reduces latency by bypassing conventional HTTP service layers.
+   - **Real Database Connections**: Uses actual database connections rather than mocks for more realistic testing and operation.
+   - **Compatibility Considerations**: For development on newer Ubuntu distributions (like Noble 24.04) where native ArangoDB installations may face compatibility issues, Docker-based deployment is available.
 
 6. **Differential Versioning System**  
    - Enables tracking knowledge graph evolution over time without excessive storage overhead.
    - Supports time-travel queries for exploring how knowledge has changed.
    - Facilitates incremental training data generation from changes.
+   - Integrated with the password rotation system to ensure secure credential management across all components.
 
 7. **Layered Security Architecture**  
    - RBAC provides fine-grained control appropriate for different user types.

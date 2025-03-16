@@ -50,12 +50,40 @@
 
 ### 1.7 Security and Authentication
 
+- **PostgreSQL-Based Authentication**: Uses PostgreSQL as the primary authentication database for both API and MCP servers.
 - **Role-Based Access Control**: Implements predefined roles (Admin, Editor, Analyst, Reader, API) with appropriate permission sets.
 - **Granular Permissions**: Defines specific permissions for different operations (read/write entities, manage users, etc.).
 - **Token & API Key Management**: Provides secure creation, validation, and revocation of authentication tokens and API keys.
 - **Rate Limiting**: Prevents abuse through configurable rate limits per user or API key.
 - **Audit Logging**: Records all security-related events for monitoring and analysis.
 - **Encryption**: Secures sensitive data using modern cryptographic methods with key derivation.
+- **Password Rotation**: Implements a secure password management system (`rotate_hades_password.sh`) that:
+  - Manages the 'hades' system user across OS, PostgreSQL, and ArangoDB
+  - Generates strong random passwords
+  - Updates credentials in all relevant environment files
+  - Maintains synchronization across all system components
+
+### 1.8 Dual Server Architecture
+
+- **API Server (`src/api/server.py`)**:
+  - Implemented with FastAPI framework for robust, high-performance REST APIs
+  - Provides traditional HTTP endpoints for client applications, web UIs, and third-party integrations
+  - Handles standard request-response patterns with JSON payloads
+  - Authentication via JWT tokens for stateless operation
+  - Designed for general-purpose application interactions
+
+- **MCP Server (`src/mcp/server.py`)**:
+  - Implemented with WebSockets for persistent, bidirectional communication
+  - Specialized for direct model integration and tool execution
+  - Maintains stateful sessions with connected clients
+  - Provides a streamlined interface for registering and executing tools
+  - Optimized for LLM integrations with lower latency requirements
+
+- **Shared Components**:
+  - Both servers use the same PostgreSQL-based authentication system
+  - Common utilities for database connections and configuration
+  - Shared data models for authentication and authorization
+  - Consistent security practices across both implementations
 
 ## 2. Code Samples and Patterns
 

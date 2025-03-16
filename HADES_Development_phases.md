@@ -8,10 +8,11 @@
 Below is a general timeline suggesting how HADES might progress from proof-of-concept to production:
 
 1. **Phase 1: Core Architecture & Basic Retrieval (Weeks 1–4)**
-   - Set up ArangoDB and skeleton code for LLM integration.
+   - Set up PostgreSQL (authentication) and ArangoDB (knowledge graph) databases.
+   - Implement separate API (FastAPI) and MCP (WebSocket) servers with clear separation of concerns.
+   - Create password management and database reset scripts for secure development.
    - Implement a minimal version of PathRAG for basic graph traversal.
-   - Integrate the MCP server with simple tool registrations.
-   - Establish base security infrastructure with authentication.
+   - Establish base security infrastructure with PostgreSQL-based authentication.
 
 2. **Phase 2: Advanced Retrieval & TCR Integration (Weeks 5–8)**
    - Add Triple Context Restoration (TCR) to provide richer context.
@@ -37,12 +38,15 @@ Below is a general timeline suggesting how HADES might progress from proof-of-co
 ## 2. Phase-Specific Implementation Details
 
 ### Phase 1: Core Setup
-- **Goals**: Ensure that the LLM can query and retrieve from ArangoDB with minimal overhead.
+- **Goals**: Establish the dual-server architecture and database infrastructure with proper authentication.
 - **Key Tasks**:
-  - Create baseline schema in ArangoDB.
-  - Configure MCP server for a single "retrieval" tool.
+  - Create separate API (REST/FastAPI) and MCP (WebSocket) server implementations.
+  - Set up PostgreSQL for authentication and ArangoDB for knowledge storage.
+  - Implement secure password management with rotation capabilities.
+  - Create database reset scripts for development and testing.
+  - Configure MCP server with initial tool registrations.
   - Set up local environment with Poetry and systemd scripts for process management.
-  - Implement basic authentication with token generation and validation.
+  - Implement basic authentication with PostgreSQL and token generation.
   - Design core classes for the layered architecture.
 
 ### Phase 2: Enhanced Retrieval

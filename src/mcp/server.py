@@ -1,182 +1,239 @@
-from fastapi import FastAPI, HTTPException, Depends
+import asyncio
+import websockets
+import json
+import logging
+from typing import Any, Dict, List, Optional, Callable
+
 from src.utils.logger import get_logger
 from src.core.security import Security
-from src.core.data_ingestion import DataIngestion
-from src.core.orchestrator import HADESOrchestrator
 from src.db.connection import get_db_connection
-from src.mcp.models import QueryRequest, QueryResponse  # Import QueryRequest and QueryResponse
-from typing import Any, Dict, List, Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-security = Security()
-data_ingestion = DataIngestion()
-orchestrator = HADESOrchestrator()
+class MCPTool:
+    def __init__(self, name: str, handler: Callable):
+        self.name = name
+        self.handler = handler
 
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint.
-    
-    Returns:
-        A simple response indicating the server is up and running
-    """
-    logger.info("Health check requested")
-    return {"status": "healthy"}
-
-def get_current_key(token: str):
-    """
-    Get the current API key for authentication.
-    
-    Args:
-        token: The JWT token to authenticate
-    
-    Returns:
-        The API key if valid, otherwise raises an HTTPException
-    """
-    logger.info(f"Getting current key for token: {token}")
-    result = security.authorize(token, "get_current_key")
-    if not result["success"]:
-        logger.error(f"Authorization failed for get_current_key - {result.get('error')}")
-        raise HTTPException(status_code=403, detail=result.get("error"))
-    
-    return result["key"]
-
-@app.post("/api/authenticate")
-async def authenticate(username: str, password: str):
-    """
-    Authenticate a user.
-    
-    Args:
-        username: The username to authenticate
-        password: The password for the user
+class MCPServer:
+    def __init__(self, host: str = "localhost", port: int = 8765):
+        self.host = host
+        self.port = port
+        self.security = Security()
+        self.tools = {}
+        self.register_default_tools()
         
-    Returns:
-        Authentication status and metadata
-    """
-    logger.info(f"Authenticating user: {username}")
-    
-    result = security.authenticate(username, password)
-    if not result["success"]:
-        logger.error(f"Authentication failed for user: {username} - {result.get('error')}")
-        raise HTTPException(status_code=401, detail=result.get("error"))
-    
-    logger.info(f"User {username} authenticated successfully")
-    return {
-        "token": result["token"]
-    }
-
-@app.post("/api/authorize")
-async def authorize(token: str, action: str):
-    """
-    Authorize a user for an action.
-    
-    Args:
-        token: The JWT token to authorize
-        action: The action to authorize the user for
+    def register_tool(self, name: str, handler: Callable):
+        """
+        Register a new tool with the MCP server.
         
-    Returns:
-        Authorization status and metadata
-    """
-    logger.info(f"Authorizing token for action: {action}")
-    
-    result = security.authorize(token, action)
-    if not result["success"]:
-        logger.error(f"Authorization failed - {result.get('error')}")
-        raise HTTPException(status_code=403, detail=result.get("error"))
-    
-    logger.info(f"Token authorized successfully for action: {action}")
-    return {
-        "authorized": result["authorized"]
-    }
-
-@app.post("/api/ingest")
-async def ingest_data(data: List[Dict[str, Any]], domain: str, token: str):
-    """
-    Ingest new data into the knowledge graph.
-    
-    Args:
-        data: List of data points to ingest
-        domain: Domain to which the data belongs
-        token: JWT token for authorization
+        Args:
+            name: The name of the tool
+            handler: The callable handler for the tool
+        """
+        logger.info(f"Registering tool: {name}")
+        self.tools[name] = MCPTool(name, handler)
         
-    Returns:
-        Ingestion status and metadata
-    """
-    logger.info(f"Ingesting {len(data)} data points into domain: {domain}")
-    
-    # Authorize the user
-    auth_result = security.authorize(token, "ingest")
-    if not auth_result["success"]:
-        logger.error(f"Authorization failed for ingest - {auth_result.get('error')}")
-        raise HTTPException(status_code=403, detail=auth_result.get("error"))
-    
-    result = data_ingestion.ingest_data(data, domain)
-    if not result["success"]:
-        logger.error(f"Ingestion failed - {result.get('error')}")
-        raise HTTPException(status_code=500, detail=result.get("error"))
-    
-    logger.info(f"Data ingestion successful for domain: {domain} with {result['ingested_count']} data points")
-    return {
-        "ingested_count": result["ingested_count"],
-        "domain": domain
-    }
-
-@app.post("/api/query", response_model=QueryResponse)
-async def process_query(query_request: QueryRequest, token: str):
-    """
-    Process a natural language query through the HADES pipeline.
-    
-    Args:
-        query_request: The request containing the query and optional domain filter
-        token: JWT token for authorization
+    def register_default_tools(self):
+        """Register the default set of tools."""
+        self.register_tool("show_databases", self.show_databases)
         
-    Returns:
-        Processed response and metadata
-    """
-    logger.info(f"Processing query: {query_request.query}")
-    
-    # Authorize the user
-    auth_result = security.authorize(token, "query")
-    if not auth_result["success"]:
-        logger.error(f"Authorization failed for query - {auth_result.get('error')}")
-        raise HTTPException(status_code=403, detail=auth_result.get("error"))
-    
-    result = orchestrator.process_query(query_request.query, query_request.domain_filter)
-    if not result["success"]:
-        logger.error(f"Query processing failed - {result.get('error')}")
-        raise HTTPException(status_code=500, detail=result.get("error"))
-    
-    logger.info(f"Query processed successfully: {query_request.query}")
-    return QueryResponse(
-        response=result["response"],
-        verified_claims=result["verified_claims"]
-    )
-
-# Placeholder for execute_pathrag function if needed
-@app.post("/api/execute_pathrag")
-async def execute_pathrag(token: str, data: Dict[str, Any]):
-    """
-    Execute a specific tool or operation.
-    
-    Args:
-        token: The JWT token for authorization
-        data: Data required for the operation
+    async def show_databases(self, params: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Tool handler to list all available databases.
         
-    Returns:
-        Execution status and metadata
-    """
-    logger.info(f"Executing pathrag with data: {data}")
+        Args:
+            params: Parameters for the tool
+            session_data: Session data including authentication info
+            
+        Returns:
+            Dict containing the list of databases
+        """
+        logger.info(f"Executing show_databases tool")
+        
+        # Check authentication
+        if not session_data.get("authenticated", False):
+            return {
+                "success": False,
+                "error": "Not authenticated"
+            }
+            
+        # Get database connection
+        db_connection = get_db_connection()
+        
+        # Get database list from PostgreSQL
+        try:
+            postgres_dbs = await db_connection.get_postgres_databases()
+        except Exception as e:
+            logger.error(f"Error getting PostgreSQL databases: {str(e)}")
+            postgres_dbs = []
+            
+        # Get database list from ArangoDB
+        try:
+            arango_dbs = await db_connection.get_arango_databases()
+        except Exception as e:
+            logger.error(f"Error getting ArangoDB databases: {str(e)}")
+            arango_dbs = []
+            
+        return {
+            "success": True,
+            "databases": {
+                "postgresql": postgres_dbs,
+                "arangodb": arango_dbs
+            }
+        }
     
-    # Authorize the user
-    auth_result = security.authorize(token, "execute_pathrag")
-    if not auth_result["success"]:
-        logger.error(f"Authorization failed for execute_pathrag - {auth_result.get('error')}")
-        raise HTTPException(status_code=403, detail=auth_result.get("error"))
+    async def handle_client(self, websocket, path):
+        """
+        Handle client connection and messages.
+        
+        Args:
+            websocket: The WebSocket connection
+            path: The connection path
+        """
+        session_data = {
+            "authenticated": False,
+            "user_id": None
+        }
+        
+        logger.info(f"Client connected from {websocket.remote_address}")
+        
+        try:
+            async for message in websocket:
+                try:
+                    data = json.loads(message)
+                    await self.process_message(websocket, data, session_data)
+                except json.JSONDecodeError:
+                    await websocket.send(json.dumps({
+                        "success": False,
+                        "error": "Invalid JSON message"
+                    }))
+        except websockets.exceptions.ConnectionClosed:
+            logger.info(f"Client disconnected: {websocket.remote_address}")
+        
+    async def process_message(self, websocket, data: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Process a message from a client.
+        
+        Args:
+            websocket: The WebSocket connection
+            data: The message data
+            session_data: Session-specific data
+        """
+        message_type = data.get("type")
+        request_id = data.get("request_id", None)
+        
+        if message_type == "authenticate":
+            await self.handle_authentication(websocket, data, session_data, request_id)
+        elif message_type == "tool_call":
+            await self.handle_tool_call(websocket, data, session_data, request_id)
+        else:
+            await websocket.send(json.dumps({
+                "request_id": request_id,
+                "success": False,
+                "error": f"Unknown message type: {message_type}"
+            }))
     
-    # Placeholder logic for execute_pathrag
-    result = {"success": True, "result": "Pathrag executed successfully"}
-    logger.info(f"Pathrag execution successful with data: {data}")
-    return result
+    async def handle_authentication(self, websocket, data: Dict[str, Any], session_data: Dict[str, Any], request_id: Optional[str]):
+        """
+        Handle authentication requests.
+        
+        Args:
+            websocket: The WebSocket connection
+            data: The message data
+            session_data: Session-specific data
+            request_id: Optional request ID for response correlation
+        """
+        username = data.get("username")
+        password = data.get("password")
+        
+        if not username or not password:
+            await websocket.send(json.dumps({
+                "request_id": request_id,
+                "success": False,
+                "error": "Username and password are required"
+            }))
+            return
+        
+        auth_result = self.security.authenticate(username, password)
+        
+        if auth_result["success"]:
+            session_data["authenticated"] = True
+            session_data["user_id"] = username
+            session_data["token"] = auth_result["token"]
+            
+            await websocket.send(json.dumps({
+                "request_id": request_id,
+                "success": True,
+                "token": auth_result["token"]
+            }))
+        else:
+            await websocket.send(json.dumps({
+                "request_id": request_id,
+                "success": False,
+                "error": auth_result.get("error", "Authentication failed")
+            }))
+    
+    async def handle_tool_call(self, websocket, data: Dict[str, Any], session_data: Dict[str, Any], request_id: Optional[str]):
+        """
+        Handle tool call requests.
+        
+        Args:
+            websocket: The WebSocket connection
+            data: The message data
+            session_data: Session-specific data
+            request_id: Optional request ID for response correlation
+        """
+        tool_name = data.get("tool")
+        params = data.get("params", {})
+        
+        if not tool_name:
+            await websocket.send(json.dumps({
+                "request_id": request_id,
+                "success": False,
+                "error": "Tool name is required"
+            }))
+            return
+        
+        if tool_name not in self.tools:
+            await websocket.send(json.dumps({
+                "request_id": request_id,
+                "success": False,
+                "error": f"Unknown tool: {tool_name}"
+            }))
+            return
+        
+        try:
+            tool = self.tools[tool_name]
+            result = await tool.handler(params, session_data)
+            
+            await websocket.send(json.dumps({
+                "request_id": request_id,
+                **result
+            }))
+        except Exception as e:
+            logger.error(f"Error executing tool {tool_name}: {str(e)}")
+            await websocket.send(json.dumps({
+                "request_id": request_id,
+                "success": False,
+                "error": f"Error executing tool: {str(e)}"
+            }))
+    
+    async def start(self):
+        """Start the MCP WebSocket server."""
+        logger.info(f"Starting MCP server on {self.host}:{self.port}")
+        server = await websockets.serve(self.handle_client, self.host, self.port)
+        
+        # Keep the server running
+        await server.wait_closed()
+        
+    def run(self):
+        """Run the MCP server synchronously."""
+        asyncio.run(self.start())
+
+# Server instance to be used by other modules
+mcp_server = MCPServer()
+
+# Entry point when running this file directly
+if __name__ == "__main__":
+    mcp_server.run()
