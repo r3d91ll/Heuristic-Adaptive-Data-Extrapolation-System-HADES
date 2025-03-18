@@ -70,7 +70,7 @@ HADES organizes its components as a single-system MI with optimized resource usa
      - Implements vector search (HNSW) for embedding retrieval.
      - Handles hierarchical relationships between `.hades` directories.
      - Performs knowledge validation via GraphCheck.
-     - Deployed via Docker for Ubuntu Noble (24.04) compatibility.
+     - Natively installed on Ubuntu Noble (24.04) for optimal performance.
    - **RAM-Based FAISS + ArangoDB Vector Search**:
      - FAISS maintains most frequently used embeddings in RAM for ultra-fast retrieval.
      - ArangoDB provides persistent storage for all embeddings.
@@ -87,7 +87,7 @@ HADES organizes its components as a single-system MI with optimized resource usa
 5. **Retrieval & Enrichment Pipeline**  
    - **PathRAG**: First component to be implemented; provides graph-based path retrieval that identifies coherent paths of knowledge, with optimized graph queries for single-system performance.
    - **Triple Context Restoration (TCR-QF)**: Second component; reconstructs full textual context for each triple and enriches the knowledge graph iteratively based on query-driven feedback.
-   - **LLM Analysis**: Third component; leverages local model inference to synthesize information from PathRAG and TCR for generating responses.
+   - **LLM Analysis with Embedded Model**: Third component; leverages local model inference with a flexible abstraction layer that supports multiple model implementations (initially Ollama). Includes entity extraction, relationship mapping, and knowledge graph enrichment capabilities, with the model serving as the core intelligence for both document processing and query handling.
    - **GraphCheck Fact Verification**: Final component; compares extracted claims against the knowledge graph via a graph neural network (GNN) running on local GPUs.
 
 6. **Self-Tuning External Continual Learner (ECL)**  
@@ -234,7 +234,7 @@ Below is a simplified interaction flow, illustrating how user queries move throu
    - **ArangoDB for Knowledge Graph**: Optimized for graph operations and multi-hop queries.
    - **Direct Database Coupling**: Reduces latency by bypassing conventional HTTP service layers.
    - **Real Database Connections**: Uses actual database connections rather than mocks for more realistic testing and operation.
-   - **Docker-based Development**: For newer Ubuntu distributions (like Noble 24.04), Docker-based deployment is recommended to avoid compatibility issues with native ArangoDB installation.ibility issues, Docker-based deployment is available.
+   - **Native Bare Metal Installation**: All components are installed directly on the system for maximum performance, including ArangoDB configured specifically for Ubuntu Noble (24.04).
 
 6. **Differential Versioning System**  
    - Enables tracking knowledge graph evolution over time without excessive storage overhead.

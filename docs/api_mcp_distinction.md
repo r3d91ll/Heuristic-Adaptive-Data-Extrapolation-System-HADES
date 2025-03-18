@@ -78,8 +78,6 @@ Since this architecture supports real database connections rather than mocks (al
 - **PostgreSQL**: For structured data and authentication
 - **ArangoDB**: For graph-based knowledge storage
 
-For development environments experiencing compatibility issues with native installations (particularly ArangoDB on Ubuntu Noble), the Docker-based approach is recommended using the included `docker-compose.test.yml` configuration.
-
 ## Future Development
 
 As per the development roadmap, the MCP server capabilities will be expanded in Phase 3 to include more tools for data ingestion, queries, and database management.

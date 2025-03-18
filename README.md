@@ -14,12 +14,13 @@ HADES organizes its components as a modular pipeline:
 1. **Large Language Model (LLM)**: Primary interface for interpreting queries and generating responses
 2. **Dual Server Architecture**:
    - **API Server (FastAPI)**: REST API for general client interactions
-   - **MCP Server (WebSockets)**: Direct model integration and tool execution
+   - **MCP Server (WebSockets/stdio)**: Direct model integration and tool execution
 3. **Database Systems**:
    - **PostgreSQL**: Handles user authentication and authorization
    - **ArangoDB**: Stores facts, documents, and relationships in a document, vector, and graph structures
 4. **Retrieval & Enrichment**: PathRAG, TCR, and ECL components
 5. **GraphCheck Fact Verification**: Compares extracted claims against the knowledge graph
+6. **Embedded Model Architecture**: Intelligent entity and relationship extraction using LLMs with swappable model implementation ([see implementation plan](HADES_Embedded_Model_Implementation_Plan.md))
 
 ## Installation
 
@@ -27,7 +28,7 @@ HADES organizes its components as a modular pipeline:
 
 - Python 3.9+
 - PostgreSQL 14+ (native installation with dedicated 'hades' user) ✓
-- ArangoDB 3.8+ (via Docker for Ubuntu Noble 24.04 compatibility) ✓
+- ArangoDB 3.8+ (native installation for Ubuntu Noble 24.04 compatibility) ✓
 - Poetry for dependency management
 - High-end workstation (optimized for AMD Threadripper 7960X + 256GB RAM + 2x RTX A6000 GPUs)
 

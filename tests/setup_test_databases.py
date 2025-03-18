@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Consolidated setup script for HADES test databases.
+Consolidated setup script for HADES test databases on bare metal installation.
 
-This script sets up both PostgreSQL and ArangoDB test databases for HADES testing.
-It creates the necessary users, databases, collections, and indexes.
+This script sets up both PostgreSQL and ArangoDB test databases for HADES testing in a native environment.
+It creates the necessary users, databases, collections, and indexes directly on the host system.
 """
 import os
 import sys

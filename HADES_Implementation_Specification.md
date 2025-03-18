@@ -10,7 +10,7 @@ HADES follows a systematic, incremental implementation approach, building each c
 - **Authentication**: PostgreSQL-based system user ('hades' with password 'o$n^3W%QD0HGWxH!') with credentials managed via the password rotation script (`scripts/rotate_hades_password.sh`)
 - **Database Integration**: 
   - Set up native PostgreSQL ('hades_test' database) for authentication and user management, using real connections for testing rather than mocks
-  - Install and configure ArangoDB via Docker for Ubuntu Noble (24.04) compatibility with vector search capabilities
+  - Install and configure ArangoDB via native installation for Ubuntu Noble (24.04) compatibility with vector search capabilities
   - Use optimization techniques for maximum performance
 - **Core Infrastructure**: Configure environment, system monitoring, and initial `.hades` directory structure
 - **Cross-References**: 
@@ -38,15 +38,21 @@ HADES follows a systematic, incremental implementation approach, building each c
   - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3 for pipeline integration
   - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 3 for timeline
 
-### 1.4 LLM Analysis (Fourth Phase)
+### 1.4 LLM Analysis and Embedded Model Integration (Fourth Phase)
 
 - **Joint Analysis**: The LLM synthesizes information from both PathRAG (graph structure) and TCR (contextual passages)
 - **Response Generation**: Produces coherent answers based on combined graph and vector context
 - **Human-Like Processing**: Mirrors how humans process structured and unstructured knowledge together
+- **Embedded Model Architecture**:
+  - Implements a model abstraction layer for flexible model swapping
+  - Uses Ollama for initial implementation with future compatibility for other models
+  - Provides entity extraction and relationship mapping through LLM-powered processing
+  - Enhances the knowledge graph with intelligent structure extraction
 - **Implementation References**:
   - Leverages vLLM for GPU-accelerated inference on RTX A6000s
   - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.1 for LLM details
   - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 3 for timeline
+  - See [HADES_Embedded_Model_Implementation_Plan.md](HADES_Embedded_Model_Implementation_Plan.md) for detailed integration plan
 
 ### 1.5 GraphCheck Fact Verification (Fifth Phase)
 
@@ -467,80 +473,185 @@ def setup_databases():
 ```
 ```
 
-## 3. Ordered Implementation Strategy
+## 3. Revised Implementation Strategy
 
-The HADES system follows a phased implementation approach to ensure each component builds upon a validated foundation. This aligns directly with the development phases outlined in [HADES_Development_phases.md](HADES_Development_phases.md).
+The HADES system follows a more incremental, risk-mitigating implementation approach based on analysis of the project's strengths and challenges. This revised strategy focuses on delivering a working MVP first, then gradually enhancing it with more advanced features. This pragmatic approach ensures each component builds upon a validated foundation while providing tangible value at each stage.
 
-### 3.1 Phase 1: MCP Server Foundation
+### 3.1 Phase 1: Foundation and Core PathRAG (Weeks 1-6)
 
-- **Model Context Protocol (MCP) Server** (First Component)
-  - Implemented as a WebSocket server for LLM interaction
-  - Provides tool registration and execution framework
-  - Integrates with PostgreSQL for authentication using dedicated 'hades' user
-  - Creates 'hades_test' database for development and testing
-  - Establishes base security infrastructure with RBAC
-  - **Cross-References**:
-    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 1 for detailed tasks
-    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.1 for core architecture
+#### 3.1.1 Model Abstraction Layer (Weeks 1-2)
+- **Goal**: Create a working model interface that enables entity extraction
+- **Key Components**:
+  - `LLMProcessor` abstract base class implementation
+  - Ollama adapter with proper error handling
+  - ModelFactory with configuration loading
+  - Simple entity extraction CLI testing tool
+- **Key Success Metrics**: Successfully extract entities from sample documents
+- **Cross-References**:
+  - See [HADES_Embedded_Model_Implementation_Plan.md](HADES_Embedded_Model_Implementation_Plan.md) for design details
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.5 for component integration
 
-### 3.2 Phase 2: PathRAG Implementation
+#### 3.1.2 Basic PathRAG Implementation (Weeks 3-4)
+- **Goal**: Create minimal viable PathRAG that can retrieve knowledge paths
+- **Key Components**:
+  - Simplified ArangoDB graph schema optimized for single-system operation
+  - Basic entity storage and relationship mapping
+  - Efficient path finding algorithms with configurable depth
+  - Simple path scoring based on relationship types
+- **Key Success Metrics**: Successful path retrieval with >70% relevance on test queries
+- **Cross-References**:
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.3 for PathRAG design
+  - Reference papers: [PathRAG: Pruning Graph-based Retrieval Augmented Generation](https://arxiv.org/html/2502.14902v1)
 
-- **PathRAG** (First Retrieval Component)
-  - Builds graph traversal capabilities in ArangoDB (via Docker on Ubuntu Noble)
-  - Implements path pruning for noise reduction
-  - Creates version-aware query capabilities
-  - Focuses on efficient multi-hop retrieval
-  - **Cross-References**:
-    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 2 for implementation details
-    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.3 for component design
+#### 3.1.3 Knowledge Ingestion Pipeline (Weeks 5-6)
+- **Goal**: Create an end-to-end pipeline for document ingestion
+- **Key Components**:
+  - Document processor with basic chunking strategies
+  - Entity extractor using the model abstraction layer
+  - Relationship mapper for basic triple extraction
+  - Knowledge graph manager for ArangoDB interactions
+  - MCP tool enhancements for data ingestion and retrieval
+- **Key Success Metrics**: Successfully process 5+ document types with proper entity/relationship extraction
+- **Cross-References**:
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.1 for MCP server integration
 
-### 3.3 Phase 3: Triple Context Restoration (TCR) Integration
+### 3.2 Phase 2: Query Enhancement and Minimal Versioning (Weeks 7-12)
 
-- **Triple Context Restoration (TCR)** (Second Retrieval Component)
-  - Enhances PathRAG results with natural language context
-  - Adds vector search for relevant passages
-  - Develops query-driven feedback loops
-  - Implements context enrichment algorithms
-  - **Cross-References**:
-    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 3 for implementation details
-    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.4 for component design
+#### 3.2.1 Basic Triple Context Restoration (TCR) (Weeks 7-8)
+- **Goal**: Implement simplified context restoration without feedback loops
+- **Key Components**:
+  - Context storage mechanism in ArangoDB
+  - Basic embedding generation for context passages
+  - Context retrieval for enhancing graph triples
+- **Key Success Metrics**: Improved answer quality in 60% of test cases compared to basic PathRAG
+- **Cross-References**:
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.4 for TCR design
+  - Reference papers: [How to Mitigate Information Loss in Knowledge Graphs for GraphRAG](https://arxiv.org/html/2501.15378v1)
 
-### 3.4 Phase 4: LLM Analysis Integration
+#### 3.2.2 Simple Versioning System (Weeks 9-10)
+- **Goal**: Implement basic versioning without full differential capabilities
+- **Key Components**:
+  - Simplified version tracking schema in ArangoDB
+  - Version metadata for entities and relationships
+  - Basic time-travel queries with version filtering
+  - API endpoints for version-aware queries
+- **Key Success Metrics**: Successfully retrieve knowledge as it existed at different points in time
+- **Cross-References**:
+  - See [README_VERSIONING.md](README_VERSIONING.md) for versioning design
 
-- **LLM Analysis** (Third Pipeline Component)
-  - Synthesizes information from PathRAG and TCR
-  - Generates initial responses to user queries
-  - Interfaces with the MCP server for tool execution
-  - Handles structured and unstructured information
-  - **Cross-References**:
-    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 4 for implementation details
-    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.5 for component design
+#### 3.2.3 Query Understanding and Processing (Weeks 11-12)
+- **Goal**: Enhance query capabilities with semantic understanding
+- **Key Components**:
+  - Query decomposition for complex questions
+  - Query understanding component using the LLM
+  - Result composition logic for multi-part answers
+  - Explanation generation for retrieved paths
+- **Key Success Metrics**: Handle 80% of test complex queries correctly
+- **Cross-References**:
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.5 for LLM integration
 
-### 3.5 Phase 5: GraphCheck Implementation
+### 3.3 Phase 3: Performance Optimization and Resource Management (Weeks 13-18)
 
-- **GraphCheck** (Final Pipeline Component)
-  - Extracts claims from generated text
-  - Validates claims against knowledge graph
-  - Identifies and flags potential inconsistencies
-  - Provides confidence scores for verified statements
-  - Verifies LLM-generated content against the knowledge graph
-  - Implements graph neural networks for claim validation
-  - Creates feedback loops for response correction
-  - Ensures factual accuracy of final responses
-  - **Cross-References**:
-    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 5 for implementation details
-    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.6 for component design
+#### 3.3.1 Performance Monitoring Infrastructure (Weeks 13-14)
+- **Goal**: Implement comprehensive monitoring for system resources
+- **Key Components**:
+  - Resource monitoring for CPU, GPU, and RAM
+  - Performance metrics collection
+  - Basic dashboard for resource visualization
+  - Logging for performance bottlenecks
+- **Key Success Metrics**: Accurate telemetry data for all system components
+- **Cross-References**:
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 4 for related tasks
 
-### 3.6 Phase 6: External Continual Learner (ECL) Development
+#### 3.3.2 Memory and Resource Optimization (Weeks 15-16)
+- **Goal**: Optimize memory usage and resource allocation
+- **Key Components**:
+  - RAM-based caching for frequently accessed embeddings
+  - GPU memory management for model inference
+  - Basic resource scheduling based on priority
+  - Database query optimization
+- **Key Success Metrics**: 30%+ improvement in throughput or latency for core operations
+- **Cross-References**:
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 4 for optimization tasks
 
-- **External Continual Learner (ECL)** (Knowledge Management)
-  - Implements `.hades` directory structure as knowledge silos
-  - Develops auto-discovery and event monitoring
-  - Creates domain embeddings for relevant knowledge retrieval
-  - Builds context fusion algorithms for multiple silos
-  - **Cross-References**:
-    - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 6 for implementation details
-    - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.7 for component design
+#### 3.3.3 `.hades` Directory Implementation (Weeks 17-18)
+- **Goal**: Implement basic `.hades` directory structure for knowledge organization
+- **Key Components**:
+  - Directory structure and file organization
+  - File system monitoring (inotify)
+  - Auto-discovery for `.hades` directories
+  - Metadata tracking for knowledge sources
+- **Key Success Metrics**: Successfully organize and retrieve knowledge from `.hades` directories
+- **Cross-References**:
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.6 for ECL integration
+
+### 3.4 Phase 4: Integration and Advanced Features (Weeks 19-24)
+
+#### 3.4.1 Full TCR with Query Feedback (Weeks 19-20)
+- **Goal**: Enhance TCR with query-driven feedback
+- **Key Components**:
+  - Feedback loops for context enhancement
+  - Query-specific context retrieval
+  - Dynamic context expansion based on query
+- **Key Success Metrics**: Further 20% improvement in answer quality over basic TCR
+- **Cross-References**:
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.4 for component design
+
+#### 3.4.2 Simplified GraphCheck Implementation (Weeks 21-22)
+- **Goal**: Create basic fact verification without full GNN complexity
+- **Key Components**:
+  - Claim extraction from LLM outputs
+  - Simple graph-based verification logic
+  - Feedback mechanism for invalid claims
+- **Key Success Metrics**: Detect 70% of factual inaccuracies in test cases
+- **Cross-References**:
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.6 for component design
+  - Reference papers: [GraphCheck: Breaking Long-Term Text Barriers with Extracted Knowledge Graph-Powered Fact-Checking](https://arxiv.org/html/2502.16514v1)
+
+#### 3.4.3 User Interface and Documentation (Weeks 23-24)
+- **Goal**: Create comprehensive documentation and basic UI
+- **Key Components**:
+  - API documentation for all endpoints
+  - User guide with examples
+  - Basic web interface for system interaction
+  - Deployment documentation
+- **Key Success Metrics**: Successfully onboard new users with documentation alone
+- **Cross-References**:
+  - See [docs/windsurf_integration.md](docs/windsurf_integration.md) for MCP integration details
+
+### 3.5 Phase 5: Advanced Features and Scaling (Weeks 25-30)
+
+#### 3.5.1 Differential Versioning Enhancement (Weeks 25-26)
+- **Goal**: Implement full differential versioning system
+- **Key Components**:
+  - Enhanced version tracking with diff generation
+  - Efficient storage for version history
+  - Training data generation from diffs
+  - Version history visualization
+- **Key Success Metrics**: Efficient storage and retrieval of version history with minimal overhead
+- **Cross-References**:
+  - See [README_VERSIONING.md](README_VERSIONING.md) for complete versioning documentation
+
+#### 3.5.2 Full GraphCheck with Simplified GNN (Weeks 27-28)
+- **Goal**: Enhance fact verification with graph neural networks
+- **Key Components**:
+  - Simplified GNN for fact verification
+  - Training on existing knowledge graph data
+  - Confidence scoring for verification results
+- **Key Success Metrics**: 85%+ accuracy in fact verification
+- **Cross-References**:
+  - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.6 for component design
+
+#### 3.5.3 System Scaling and Deployment Options (Weeks 29-30)
+- **Goal**: Provide scaling options beyond single-system deployment
+- **Key Components**:
+  - Performance characteristics documentation
+  - Deployment guides for various hardware configurations
+  - Optional distributed components 
+  - Testing with larger knowledge graphs
+- **Key Success Metrics**: Successfully deploy and benchmark on different hardware configurations
+- **Cross-References**:
+  - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 6 for scaling tasks
 
 ## 4. Database Schema and Configuration
 

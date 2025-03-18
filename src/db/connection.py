@@ -1,4 +1,5 @@
-from arango import ArangoClient, ArangoError
+from arango import ArangoError
+from src.db.arango_patch import PatchedArangoClient, get_patched_arango_client
 import logging
 import os
 import psycopg2
@@ -44,19 +45,41 @@ class DBConnection:
         Returns:
             True if connection is successful, False otherwise
         """
+        # Ensure host has a protocol scheme
+        if not host.startswith("http://") and not host.startswith("https://"):
+            host = f"http://{host}"
+            
         db_to_connect = db_name or self.db_name
         logger.info(f"Connecting to ArangoDB at {host}, database {db_to_connect}")
         
         try:
-            # Create client with simplified connection
-            self.arango_client = ArangoClient(hosts=host)
+            # Use our patched ArangoClient that properly handles URL schemes
+            logger.info(f"Initializing PatchedArangoClient with host: {host}")
+            self.arango_client = get_patched_arango_client(host=host)
             
-            # Connect directly to requested database or _system if none specified
+            # First connect to _system database to ensure database exists
+            system_db = self.arango_client.db('_system', username=username, password=password)
+            
+            # Check if target database exists, create it if it doesn't
+            if db_to_connect != '_system':
+                if not system_db.has_database(db_to_connect):
+                    logger.info(f"Database {db_to_connect} does not exist, creating it")
+                    system_db.create_database(db_to_connect)
+                    logger.info(f"Created database {db_to_connect}")
+            
+            # Connect to the target database
             target_db = db_to_connect if db_to_connect else '_system'
             logger.info(f"Connecting to ArangoDB database {target_db} as {username}")
             
-            # Simple connection without checking databases list
+            # Connect to the target database with authentication
             self.arango_db = self.arango_client.db(target_db, username=username, password=password)
+            
+            # Store connection information for future use
+            self.arango_host = host
+            self.arango_username = username
+            self.arango_password = password
+            self.arango_db_name = target_db
+            
             logger.info(f"Successfully connected to ArangoDB database {target_db}")
             return True
         
@@ -127,11 +150,33 @@ class DBConnection:
         """
         logger.info(f"Executing AQL query: {query}")
         
-        if not self.arango_db:
+        if not self.arango_db or not self.arango_client:
+            logger.error("No ArangoDB connection available")
             return {
                 "success": False,
                 "error": "Not connected to ArangoDB"
             }
+        
+        # Make sure we're using a properly formatted host with protocol
+        if not hasattr(self, 'arango_host') or not self.arango_host:
+            # Default to http if not set
+            arango_host = os.environ.get("HADES_ARANGO_HOST", "localhost")
+            arango_port = os.environ.get("HADES_ARANGO_PORT", "8529")
+            self.arango_host = f"http://{arango_host}:{arango_port}"
+            logger.info(f"Setting default ArangoDB host URL: {self.arango_host}")
+            
+            # Recreate the ArangoDB client with the proper URL
+            username = os.environ.get("HADES_ARANGO_USER", "root")
+            password = os.environ.get("HADES_ARANGO_PASSWORD", "")
+            db_name = os.environ.get("HADES_ARANGO_DATABASE", "hades_graph")
+            
+            # Reconnect to ensure proper URL throughout the connection
+            self.connect_arango(
+                host=self.arango_host,
+                username=username,
+                password=password,
+                db_name=db_name
+            )
         
         try:
             # Add version-aware clauses if specified

@@ -9,7 +9,7 @@ Below is a timeline for developing HADES as a single-system Machine Intelligence
 
 1. **Phase 1: Core System & MCP Interface Implementation (Weeks 1–3)**
    - Set up PostgreSQL with dedicated 'hades' system user (password: 'o$n^3W%QD0HGWxH!') and 'hades_test' database.
-   - Configure ArangoDB via Docker for Ubuntu Noble (24.04) compatibility with vector search capabilities.
+   - Configure ArangoDB for Ubuntu Noble (24.04) compatibility with vector search capabilities.
    - Integrate FAISS for RAM-resident embedding storage and ultra-fast retrieval.
    - Deploy vLLM for GPU-accelerated inference, configured for RTX A6000 GPUs.
    - Implement the MCP Server with VSCode Cursor & Windsurf integration support.
@@ -52,7 +52,7 @@ Below is a timeline for developing HADES as a single-system Machine Intelligence
    - Fine-tune GPU memory management for optimal model inference.
    - Expand `.hades` directory usage across OS directories for system-wide knowledge.
    - Complete the security infrastructure with PostgreSQL-based authentication.
-   - Optimize Docker deployment for ArangoDB on Ubuntu Noble (24.04).
+   - Optimize ArangoDB deployment for ArangoDB on Ubuntu Noble (24.04).
 
 6. **Phase 6: Fully Autonomous MI Workstation (Weeks 17-20)**
    - Complete the integration of all components into a self-managing intelligence.
@@ -71,7 +71,7 @@ Below is a timeline for developing HADES as a single-system Machine Intelligence
 - **Key Tasks**:
   - Create a dedicated 'hades' system user and PostgreSQL role with specified credentials (password: 'o$n^3W%QD0HGWxH!').
   - Set up PostgreSQL database 'hades_test' for authentication using real connections.
-  - Deploy ArangoDB via Docker to ensure compatibility with Ubuntu Noble (24.04).
+  - Deploy ArangoDB natively on Ubuntu Noble (24.04) for vector search capabilities.
   - Configure ArangoDB with vector search (HNSW) capabilities for embedding retrieval.
   - Set up FAISS for in-memory vector storage and ultra-fast embedding retrieval.
   - Deploy vLLM on RTX A6000 GPUs for local model inference.
@@ -96,7 +96,7 @@ Below is a timeline for developing HADES as a single-system Machine Intelligence
   - Create initial version of the autonomic control system for resource management.
 
 ### Phase 3: Local Model Integration & Optimization
-- **Goals**: Deploy and optimize local LLM inference using GPU acceleration.
+- **Goals**: Deploy and optimize local LLM inference using GPU acceleration with embedded model architecture.
 - **Key Tasks**:
   - Deploy Codestral 22B (or similar 13-30B parameter model) using vLLM for inference.
   - Configure model parameters for optimal performance on dual RTX A6000 GPUs.
@@ -109,6 +109,8 @@ Below is a timeline for developing HADES as a single-system Machine Intelligence
   - Measure MCP overhead and develop optimizations if needed.
   - Begin implementing adaptive batch size based on query complexity.
   - Create cache management for frequently used model weights and embeddings.
+  - Implement embedded model architecture with flexible model abstraction layer ([detailed in implementation plan](HADES_Embedded_Model_Implementation_Plan.md)).
+  - Create entity extraction and relationship mapping components using Ollama integration.
 
 ### Phase 4: Autonomous System Resource Management
 - **Goals**: Create a self-optimizing system that intelligently manages workstation resources.
@@ -137,7 +139,7 @@ Below is a timeline for developing HADES as a single-system Machine Intelligence
   - Fine-tune GPU kernel configurations for maximum throughput.
   - Implement workload-specific optimizations for different query types.
   - Expand `.hades` directory usage across the operating system for broader context.
-  - Optimize Docker configuration for ArangoDB performance on Ubuntu Noble.
+  - Optimize ArangoDB configuration for performance on Ubuntu Noble.
   - Conduct benchmarks comparing Python vs. Mojo implementations.
   - Document performance improvements and optimization strategies.
 
@@ -167,7 +169,7 @@ Below is a timeline for developing HADES as a single-system Machine Intelligence
 
 2. **Integration Tests**  
    - Ensure all components (MCP Server, FAISS, PathRAG, vLLM, GraphCheck, ECL) work seamlessly together.
-   - Use real database connections for PostgreSQL and Docker-based ArangoDB.
+   - Use real database connections for PostgreSQL and ArangoDB.
    - Test the `.hades` directory system across various directory hierarchies.
    - Validate resource management across varying workloads and system conditions.
    - Test system recovery from simulated failures and resource constraints.
@@ -205,11 +207,11 @@ Below is a timeline for developing HADES as a single-system Machine Intelligence
   - Ubuntu Noble (24.04) as the primary operating system
   - vLLM for GPU-accelerated model inference
   - FAISS for RAM-resident vector search
-  - Docker for ArangoDB deployment (addressing Noble compatibility)
+  - Native ArangoDB for vector search (HNSW) capabilities
   - Native PostgreSQL with dedicated 'hades' user and 'hades_test' database
 
 - **Component Distribution**:
-  - ArangoDB: Docker container with volume mounts for persistence
+  - ArangoDB: Native installation for optimal performance
   - PostgreSQL: Native installation for optimal performance
   - MCP server: Native service with system daemon
   - Model Inference: vLLM configured for dual A6000 GPUs
@@ -230,7 +232,6 @@ Below is a timeline for developing HADES as a single-system Machine Intelligence
 - **Local Development**:
   - Poetry for dependency management
   - Systemd for service control
-  - Docker Compose for container orchestration for automated testing and deployments
   - Configure environment-specific variables via `.env` files
 - **Security Configuration**:
   - Store master encryption keys and salts in secure environment variables

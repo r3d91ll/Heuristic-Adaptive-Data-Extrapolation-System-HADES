@@ -4,7 +4,7 @@
 
 ### Database Setup
 - [x] Set up PostgreSQL with dedicated 'hades' system user and 'hades_test' database
-- [x] Configure ArangoDB via Docker for Ubuntu Noble (24.04) compatibility
+- [x] Configure ArangoDB via native installation for Ubuntu Noble (24.04) compatibility
 - [x] Create password rotation script (`scripts/rotate_hades_password.sh`) for database credentials
 - [x] Configure real database connections for testing rather than using mocks
 
@@ -47,10 +47,31 @@
 ## Phase 3: Expand MCP Capabilities
 
 ### 1. Data Ingestion Tools
-- [ ] Implement "ingest_data" tool for adding data to knowledge graph
-- [ ] Add validation and error handling
+- [x] Implement "ingest_data" tool for adding data to knowledge graph
+- [x] Add validation and error handling
+- [x] Create scripts for batch ingestion of documentation
+- [x] Ingest ArangoDB Python documentation into HADES
+- [x] Add documentation for ingestion process (`docs/documentation_ingestion.md`)
+
+### 2. Data Retrieval Tools
+- [x] Implement "pathrag_retrieve" tool for retrieving data from knowledge graph
+- [ ] Enhance PathRAG with context-aware retrieval
+- [ ] Implement semantic search capabilities
 - [ ] Create test cases for data ingestion
 - [ ] Document the data format and requirements
+
+### 3. Embedded Model Architecture Implementation
+- [x] Create implementation plan document ([HADES_Embedded_Model_Implementation_Plan.md](HADES_Embedded_Model_Implementation_Plan.md))
+- [ ] Implement model abstraction layer with LLMProcessor interface
+- [ ] Create Ollama adapter implementing the LLMProcessor interface
+- [ ] Develop ModelFactory for instantiating appropriate model adapters
+- [ ] Integrate with document processing pipeline
+- [ ] Enhance entity extraction capabilities using LLM
+- [ ] Implement relationship mapping functionality
+- [ ] Add model-powered context generation for queries
+- [ ] Create configuration system for model selection and parameters
+- [ ] Develop model caching mechanism for performance
+- [ ] Write comprehensive tests for model swapping capabilities
 
 ### 2. Query Tools
 - [ ] Implement "query" tool for natural language queries

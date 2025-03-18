@@ -119,8 +119,8 @@ While PostgreSQL primarily handles authentication in the current implementation,
 
 ### 5.2 Development Environment Considerations
 
-- **Ubuntu Noble Compatibility**: For development on Ubuntu Noble (24.04), PostgreSQL is installed natively, while ArangoDB is deployed via Docker for compatibility
-- **ArangoDB Configuration**: Docker-based deployment ensures compatibility with Ubuntu Noble (24.04) while maintaining performance
+- **Ubuntu Noble Compatibility**: For development on Ubuntu Noble (24.04), PostgreSQL is installed natively, while ArangoDB is deployed via native installation for compatibility
+- **ArangoDB Configuration**: Native deployment ensures compatibility with Ubuntu Noble (24.04) while maintaining performance
 - **Cross-Database Versioning**: The versioning system tracks changes across both PostgreSQL and ArangoDB for consistency
 
 See [HADES_Implementation_Specification.md](HADES_Implementation_Specification.md) for detailed implementation order (MCP → PathRAG → TCR → LLM Analysis → GraphCheck) and [HADES_Development_phases.md](HADES_Development_phases.md) for phase-specific timelines.
