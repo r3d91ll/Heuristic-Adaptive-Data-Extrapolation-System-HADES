@@ -21,12 +21,14 @@ HADES follows a systematic, incremental implementation approach, building each c
 
 - **Core Logic**: Optimized graph traversals within ArangoDB to identify paths that link query-relevant nodes
 - **Pruning Mechanism**: Assigns a "resource flow" score to potential paths; distant or low-flow edges get pruned to reduce noise
+- **Memory-Enhanced Design**: Implements tiered memory management for efficient data access and context window optimization
 - **Version-Aware Queries**: Supports querying the knowledge graph as it existed at specific versions or timestamps
 - **Single-System Optimization**: Tailored for high-performance on local workstation with limited resources
 - **Implementation References**: 
   - [PathRAG: Pruning Graph-based Retrieval Augmented Generation](https://arxiv.org/html/2502.14902v1)
   - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 2 for research foundation
   - See [HADES_Development_phases.md](HADES_Development_phases.md) Phase 2 for timeline
+  - See [HADES_PathRAG_Implementation.md](HADES_PathRAG_Implementation.md) for detailed implementation plan
 
 ### 1.3 Triple Context Restoration (TCR) (Third Phase)
 
