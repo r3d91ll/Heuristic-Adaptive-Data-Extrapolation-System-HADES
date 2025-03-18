@@ -147,46 +147,22 @@ setup_arangodb() {
     
     # Check if ArangoDB is installed
     if ! command_exists arangod && ! command_exists arangosh; then
-        echo -e "${YELLOW}ArangoDB commands not found in PATH.${NC}"
-        
-        # Check if Docker is installed as an alternative
-        if command_exists docker; then
-            echo -e "${YELLOW}Docker is installed. Checking for ArangoDB container...${NC}"
-            
-            # Check if ArangoDB container is already running
-            if ! docker ps | grep -q arangodb; then
-                echo -e "${YELLOW}ArangoDB container not found. Would you like to run ArangoDB in Docker? (y/n)${NC}"
-                read -r use_docker
-                
-                if [ "$use_docker" = "y" ]; then
-                    # Start ArangoDB in Docker
-                    echo -e "${YELLOW}Starting ArangoDB in Docker...${NC}"
-                    docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=password arangodb/arangodb:latest
-                    
-                    # Wait for ArangoDB to start
-                    echo -e "${YELLOW}Waiting for ArangoDB to start...${NC}"
-                    sleep 10
-                    
-                    # Set root password for further operations
-                    ARANGO_ROOT_PASSWORD="password"
-                else
-                    echo -e "${RED}ArangoDB is required for HADES. Please install ArangoDB and run this script again.${NC}"
-                    return 1
-                fi
-            else
-                echo -e "${GREEN}ArangoDB container is already running.${NC}"
-                # Prompt for root password
-                echo -e "${YELLOW}Please enter the ArangoDB root password:${NC}"
-                read -s ARANGO_ROOT_PASSWORD
-                echo
-            fi
-        else
-            echo -e "${RED}ArangoDB is not installed and Docker is not available.${NC}"
-            echo -e "${RED}Please install ArangoDB or Docker and run this script again.${NC}"
-            return 1
-        fi
+        echo -e "${RED}ArangoDB is not installed. Please install ArangoDB first.${NC}"
+        echo -e "${YELLOW}For Ubuntu: Check installation instructions at https://www.arangodb.com/docs/stable/installation-linux-ubuntu.html${NC}"
+        echo -e "${YELLOW}You may need to build from source for Noble (24.04): https://github.com/arangodb/arangodb${NC}"
+        return 1
     else
         echo -e "${GREEN}ArangoDB is installed.${NC}"
+        
+        # Check if ArangoDB service is running
+        if ! systemctl is-active --quiet arangodb3; then
+            echo -e "${YELLOW}ArangoDB is not running. Starting ArangoDB...${NC}"
+            sudo systemctl start arangodb3
+            sleep 5 # Give it time to start
+        fi
+        
+        echo -e "${GREEN}ArangoDB service is running.${NC}"
+        
         # Prompt for root password
         echo -e "${YELLOW}Please enter the ArangoDB root password:${NC}"
         read -s ARANGO_ROOT_PASSWORD
