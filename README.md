@@ -5,7 +5,7 @@ HADES is a system that integrates a Large Language Model (LLM) with a graph-base
 - **PathRAG**: Graph-based path retrieval with relational pruning
 - **Triple Context Restoration (TCR)**: Restores natural language context around graph triples
 - **GraphCheck**: Post-generation fact verification mechanism
-- **External Continual Learner (ECL)**: Keeps knowledge base up-to-date without model retraining
+- **External Continual Learner (ECL)**: Keeps knowledge base up-to-date without model retraining and maintains user-specific memories
 
 ## Architecture Overview
 
@@ -18,9 +18,10 @@ HADES organizes its components as a modular pipeline:
 3. **Database Systems**:
    - **PostgreSQL**: Handles user authentication and authorization
    - **ArangoDB**: Stores facts, documents, and relationships in a document, vector, and graph structures
-4. **Retrieval & Enrichment**: PathRAG, TCR, and ECL components
+4. **Retrieval & Enrichment**: PathRAG, TCR, and ECL components with user memory capabilities
 5. **GraphCheck Fact Verification**: Compares extracted claims against the knowledge graph
 6. **Embedded Model Architecture**: Intelligent entity and relationship extraction using LLMs with swappable model implementation ([see implementation plan](HADES_Embedded_Model_Implementation_Plan.md))
+7. **User Memory System**: Stores and processes user-specific observations and conversation history for personalized context ([see implementation details](docs/ECL_User_Memory_Implementation.md))
 
 ## Installation
 

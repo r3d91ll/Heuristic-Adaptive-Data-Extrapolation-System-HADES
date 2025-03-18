@@ -101,6 +101,8 @@ HADES organizes its components as a single-system MI with optimized resource usa
    - **Auto-Discovery**: Uses filesystem events (via `inotify` on Linux) to detect changes in `.hades` directories.
    - **RAM-Optimized Retrieval**: Keeps frequently accessed embeddings in memory for instant recall.
    - **Version Management**: Tracks file history within each `.hades` directory for temporal context.
+   - **User Memory System**: Stores and retrieves user-specific observations and conversation history using a structured directory system.
+   - **Entity-Relationship User Memory**: Represents user memories as typed entities with atomic observations and explicit relationships.
 
 7. **Versioning System**  
    - Tracks all changes to the knowledge graph with semantic versioning.

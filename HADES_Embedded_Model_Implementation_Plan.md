@@ -190,13 +190,34 @@ class LLMProcessor(ABC):
     
     @abstractmethod
     def extract_entities(self, document: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract entities from a document."""
+        """
+        Extract entities from a document with clear typing and atomic observations.
+        
+        Returns a list of entity dictionaries with the following structure:
+        {
+            'name': 'entity_name',           # Unique identifier for the entity
+            'entity_type': 'concept',        # Type classification (person, concept, organization, etc.)
+            'observations': [                # List of atomic, discrete facts about the entity
+                'Fact 1',
+                'Fact 2'
+            ]
+        }
+        """
         pass
     
     @abstractmethod
     def identify_relationships(self, entities: List[Dict[str, Any]], 
                               document: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Identify relationships between entities."""
+        """
+        Identify relationships between entities with clear directionality.
+        
+        Returns a list of relationship dictionaries with the following structure:
+        {
+            'from': 'entity1_name',          # Source entity name
+            'to': 'entity2_name',            # Target entity name
+            'relation_type': 'depends_on'    # Relationship type in active voice
+        }
+        """
         pass
     
     @abstractmethod
@@ -221,7 +242,7 @@ from typing import Dict, List, Any, Optional
 from .llm_processor import LLMProcessor
 from .prompt_templates import (
     ENTITY_EXTRACTION_PROMPT,
-    RELATIONSHIP_MAPPING_PROMPT,
+    RELATIONSHIP_EXTRACTION_PROMPT,
     DOCUMENT_CLASSIFICATION_PROMPT,
     CONTEXT_GENERATION_PROMPT
 )
@@ -270,7 +291,11 @@ class OllamaProcessor(LLMProcessor):
             metadata=json.dumps(document.get("metadata", {}))
         )
         
-        system_prompt = "You are an expert at identifying entities in text. Extract all named entities, concepts, and technical terms."
+        system_prompt = (
+            "You are an expert at identifying entities in text. Extract all named entities, concepts, and technical terms. "
+            "For each entity, provide a unique name, entity type, and a list of atomic observations (discrete facts) about the entity. "
+            "Return the results as a properly formatted JSON array."
+        )
         
         response = self._call_ollama(prompt, system_prompt)
         
@@ -278,10 +303,82 @@ class OllamaProcessor(LLMProcessor):
         try:
             # The response should be a JSON string containing entities
             entities = json.loads(response)
-            return entities
+            
+            # Ensure each entity has the required structure
+            normalized_entities = []
+            for entity in entities:
+                # Make sure entity has all required fields
+                if 'name' not in entity or 'entity_type' not in entity:
+                    continue
+                    
+                # Ensure observations is a list of strings
+                observations = entity.get('observations', [])
+                if not isinstance(observations, list):
+                    observations = [str(observations)]
+                    
+                normalized_entities.append({
+                    'name': entity['name'],
+                    'entity_type': entity['entity_type'],
+                    'observations': observations
+                })
+                
+            return normalized_entities
         except json.JSONDecodeError:
             # Fallback parsing if the model doesn't return proper JSON
             # Implement custom parsing logic here
+            return []
+    
+    def identify_relationships(self, entities: List[Dict[str, Any]], document: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Identify relationships between entities using Ollama."""
+        # Skip relationship identification if there are too few entities
+        if len(entities) < 2:
+            return []
+            
+        # Create a context with entity information for the prompt
+        entity_context = "\n".join([f"Entity: {e['name']} (Type: {e['entity_type']})" for e in entities])
+        
+        prompt = RELATIONSHIP_EXTRACTION_PROMPT.format(
+            title=document.get("title", "Untitled"),
+            content=document.get("content", ""),
+            entity_context=entity_context
+        )
+        
+        system_prompt = (
+            "You are an expert at identifying relationships between entities. "
+            "Identify directed relationships between the provided entities using the document context. "
+            "Each relationship should have a source entity (from), target entity (to), and relationship type in active voice. "
+            "Return the results as a properly formatted JSON array."
+        )
+        
+        response = self._call_ollama(prompt, system_prompt)
+        
+        # Parse the response to extract structured relationship data
+        try:
+            # The response should be a JSON string containing relationships
+            relationships = json.loads(response)
+            
+            # Ensure each relationship has the required structure
+            normalized_relationships = []
+            entity_names = {entity['name'] for entity in entities}
+            
+            for relation in relationships:
+                # Make sure relation has all required fields
+                if 'from' not in relation or 'to' not in relation or 'relation_type' not in relation:
+                    continue
+                    
+                # Make sure both entities exist in our entity list
+                if relation['from'] not in entity_names or relation['to'] not in entity_names:
+                    continue
+                    
+                normalized_relationships.append({
+                    'from': relation['from'],
+                    'to': relation['to'],
+                    'relation_type': relation['relation_type']
+                })
+                
+            return normalized_relationships
+        except json.JSONDecodeError:
+            # Fallback parsing if the model doesn't return proper JSON
             return []
     
     # Implement other abstract methods similarly
@@ -570,6 +667,78 @@ The system is designed to support model versioning:
 - **Model Failure**: Implement retry logic and simpler fallback extraction methods
 - **Performance Issues**: Add caching layers and consider asynchronous processing
 - **Integration Problems**: Maintain ability to revert to simpler document ingestion
+
+### 4.5 Prompt Templates
+
+```python
+# prompt_templates.py
+
+# Entity extraction prompt template
+ENTITY_EXTRACTION_PROMPT = """
+Title: {title}
+
+Content: {content}
+
+Metadata: {metadata}
+
+Extract all named entities, concepts, and technical terms from the above document.
+For each entity, include a unique name, entity type (person, organization, concept, etc.), and a list of discrete observations (facts).
+Return the results as a valid JSON array of entity objects with the following structure:
+{{
+  "name": "entity_name",
+  "entity_type": "type_classification", 
+  "observations": ["Fact 1", "Fact 2", ...]
+}}
+"""
+
+# Relationship extraction prompt template
+RELATIONSHIP_EXTRACTION_PROMPT = """
+Title: {title}
+
+Content: {content}
+
+Entity Context: 
+{entity_context}
+
+Identify the directed relationships between the entities listed above based on the document content.
+Return the results as a valid JSON array of relationship objects with the following structure:
+{{
+  "from": "source_entity_name",
+  "to": "target_entity_name",
+  "relation_type": "relationship_type" 
+}}
+
+Ensure each relationship type is in active voice (e.g., "depends_on", "created_by", "contains", etc.).
+Only include relationships that are explicitly or implicitly supported by the document content.
+"""
+
+# Document classification prompt template
+DOCUMENT_CLASSIFICATION_PROMPT = """
+Title: {title}
+
+Content: {content}
+
+Metadata: {metadata}
+
+Determine the most appropriate document type classification for the above content.
+Choose from the following types: technical, academic, business, news, or personal.
+Provide your answer as a single word.
+"""
+
+# Context generation prompt template
+CONTEXT_GENERATION_PROMPT = """
+Query: {query}
+
+Relevant Entity Information:
+{entity_info}
+
+Based on the query and the relevant entity information provided, generate additional context
+that would be helpful for answering the query. Focus on synthesizing the entity information
+into a coherent narrative that addresses the query's intent.
+
+Limit your response to 2-3 paragraphs maximum.
+"""
+```
 
 ## 10. Timeline and Milestones
 

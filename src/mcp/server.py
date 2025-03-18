@@ -16,6 +16,7 @@ from src.utils.logger import get_logger
 from src.core.security import Security
 from src.db.connection import get_db_connection
 from src.rag.path_rag import PathRAG
+from src.ecl.user_memory import UserMemoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,10 @@ class MCPServer:
         self.security = Security()
         self.tools = {}
         
+        # Initialize the user memory manager
+        self.user_memory = UserMemoryManager()
+        logger.info("Initialized UserMemoryManager")
+        
         # We'll create a fresh PathRAG instance for each method call rather than reusing
         # to avoid URL scheme issues
         self.register_default_tools()
@@ -64,6 +69,18 @@ class MCPServer:
         # Register PathRAG tools
         self.register_tool("ingest_data", self.ingest_data)
         self.register_tool("pathrag_retrieve", self.pathrag_retrieve)
+        
+        # Register memory-related tools
+        self.register_tool("get_user_memory", self.get_user_memory)
+        self.register_tool("add_user_observation", self.add_user_observation)
+        self.register_tool("create_conversation", self.create_conversation)
+        self.register_tool("add_conversation_message", self.add_conversation_message)
+        
+        # Register entity management tools inspired by MCP memory server
+        self.register_tool("search_entities", self.search_entities)
+        self.register_tool("add_observations", self.add_observations)
+        self.register_tool("create_entities", self.create_entities)
+        self.register_tool("create_relations", self.create_relations)
         
     async def show_databases(self, params: Dict[str, Any], session_data: Dict[str, Any]):
         """
@@ -175,20 +192,26 @@ class MCPServer:
         """
         username = data.get("username")
         password = data.get("password")
+        api_key = data.get("api_key")  # Allow API key authentication
         
-        if not username or not password:
+        if api_key:
+            # Authenticate with API key
+            auth_result = self.security.authenticate_with_api_key(api_key)
+        elif username and password:
+            # Authenticate with username/password
+            auth_result = self.security.authenticate(username, password)
+        else:
             await websocket.send(json.dumps({
                 "request_id": request_id,
                 "success": False,
-                "error": "Username and password are required"
+                "error": "Either API key or username and password are required"
             }))
             return
         
-        auth_result = self.security.authenticate(username, password)
-        
         if auth_result["success"]:
             session_data["authenticated"] = True
-            session_data["user_id"] = username
+            session_data["user_id"] = username if username else auth_result.get("user_id")
+            session_data["api_key"] = api_key if api_key else auth_result.get("api_key")
             session_data["token"] = auth_result["token"]
             
             await websocket.send(json.dumps({
@@ -280,6 +303,7 @@ class MCPServer:
                 - max_paths: Maximum number of paths to retrieve
                 - domain_filter: Optional domain filter
                 - as_of_version: Optional version to query against
+                - context_path: Optional path to provide context from (e.g., user memory path)
             session_data: Session data including authentication info
             
         Returns:
@@ -337,6 +361,252 @@ class MCPServer:
                 "success": False,
                 "error": f"Error retrieving paths: {str(e)}"
             }
+    
+    async def search_entities(self, params: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Tool handler to search for entities based on a query.
+        
+        Args:
+            params: Parameters for the tool including:
+                - query: The search query to match against entity names, types, and observations
+                - domain_filter: Optional domain filter
+                - as_of_version: Optional version to query against
+            session_data: Session data including authentication info
+            
+        Returns:
+            Dict containing the search results and metadata
+        """
+        logger.info(f"Executing search_entities tool")
+        
+        # Check authentication
+        if not session_data.get("authenticated", False):
+            return {
+                "success": False,
+                "error": "Not authenticated"
+            }
+        
+        # Extract parameters
+        query = params.get("query", "")
+        domain_filter = params.get("domain_filter")
+        as_of_version = params.get("as_of_version")
+        
+        # Validate parameters
+        if not query:
+            return {
+                "success": False,
+                "error": "No search query provided"
+            }
+        
+        try:
+            # Create a new instance of the path_rag for this request
+            from src.rag.path_rag import PathRAG
+            fresh_path_rag = PathRAG()
+            
+            # Call the PathRAG search method
+            result = fresh_path_rag.search_entities(
+                query=query,
+                domain_filter=domain_filter,
+                as_of_version=as_of_version
+            )
+        except Exception as e:
+            logger.error(f"Error in search_entities: {e}")
+            return {
+                "success": False,
+                "error": f"Error searching entities: {str(e)}"
+            }
+        
+        return result
+    
+    async def add_observations(self, params: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Tool handler to add observations to existing entities.
+        
+        Args:
+            params: Parameters for the tool including:
+                - observations: List of observation objects, each containing:
+                    - entity_name: Name of the target entity
+                    - contents: List of observations to add
+                - domain: Domain to associate with the data (default: "general")
+                - as_of_version: Optional version to tag the data with
+            session_data: Session data including authentication info
+            
+        Returns:
+            Dict containing the added observations and metadata
+        """
+        logger.info(f"Executing add_observations tool")
+        
+        # Check authentication
+        if not session_data.get("authenticated", False):
+            return {
+                "success": False,
+                "error": "Not authenticated"
+            }
+        
+        # Extract parameters
+        observations = params.get("observations", [])
+        domain = params.get("domain", "general")
+        as_of_version = params.get("as_of_version")
+        
+        # Validate parameters
+        if not observations:
+            return {
+                "success": False,
+                "error": "No observations provided"
+            }
+        
+        if not isinstance(observations, list):
+            return {
+                "success": False,
+                "error": "Observations must be a list"
+            }
+        
+        try:
+            # Create a new instance of the path_rag for this request
+            from src.rag.path_rag import PathRAG
+            fresh_path_rag = PathRAG()
+            
+            # Call the PathRAG add_observations method
+            result = fresh_path_rag.add_observations(
+                observations=observations,
+                domain=domain,
+                as_of_version=as_of_version
+            )
+        except Exception as e:
+            logger.error(f"Error in add_observations: {e}")
+            return {
+                "success": False,
+                "error": f"Error adding observations: {str(e)}"
+            }
+        
+        return result
+    
+    async def create_entities(self, params: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Tool handler to create new entities in the knowledge graph.
+        
+        Args:
+            params: Parameters for the tool including:
+                - entities: List of entity objects, each containing:
+                    - name: Entity identifier
+                    - entity_type: Type classification
+                    - observations: List of observations
+                - domain: Domain to associate with the data (default: "general")
+                - as_of_version: Optional version to tag the data with
+            session_data: Session data including authentication info
+            
+        Returns:
+            Dict containing the created entities and metadata
+        """
+        logger.info(f"Executing create_entities tool")
+        
+        # Check authentication
+        if not session_data.get("authenticated", False):
+            return {
+                "success": False,
+                "error": "Not authenticated"
+            }
+        
+        # Extract parameters
+        entities = params.get("entities", [])
+        domain = params.get("domain", "general")
+        as_of_version = params.get("as_of_version")
+        
+        # Validate parameters
+        if not entities:
+            return {
+                "success": False,
+                "error": "No entities provided"
+            }
+        
+        if not isinstance(entities, list):
+            return {
+                "success": False,
+                "error": "Entities must be a list"
+            }
+        
+        try:
+            # Create a new instance of the path_rag for this request
+            from src.rag.path_rag import PathRAG
+            fresh_path_rag = PathRAG()
+            
+            # Call the PathRAG create_entities method
+            result = fresh_path_rag.create_entities(
+                entities=entities,
+                domain=domain,
+                as_of_version=as_of_version
+            )
+        except Exception as e:
+            logger.error(f"Error in create_entities: {e}")
+            return {
+                "success": False,
+                "error": f"Error creating entities: {str(e)}"
+            }
+        
+        return result
+        
+    async def create_relations(self, params: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Tool handler to create relations between entities.
+        
+        Args:
+            params: Parameters for the tool including:
+                - relations: List of relation objects, each containing:
+                    - from: Source entity name
+                    - to: Target entity name
+                    - relation_type: Relationship type
+                - domain: Domain to associate with the data (default: "general")
+                - as_of_version: Optional version to tag the data with
+            session_data: Session data including authentication info
+            
+        Returns:
+            Dict containing the created relations and metadata
+        """
+        logger.info(f"Executing create_relations tool")
+        
+        # Check authentication
+        if not session_data.get("authenticated", False):
+            return {
+                "success": False,
+                "error": "Not authenticated"
+            }
+        
+        # Extract parameters
+        relations = params.get("relations", [])
+        domain = params.get("domain", "general")
+        as_of_version = params.get("as_of_version")
+        
+        # Validate parameters
+        if not relations:
+            return {
+                "success": False,
+                "error": "No relations provided"
+            }
+        
+        if not isinstance(relations, list):
+            return {
+                "success": False,
+                "error": "Relations must be a list"
+            }
+        
+        try:
+            # Create a new instance of the path_rag for this request
+            from src.rag.path_rag import PathRAG
+            fresh_path_rag = PathRAG()
+            
+            # Call the PathRAG create_relations method
+            result = fresh_path_rag.create_relations(
+                relations=relations,
+                domain=domain,
+                as_of_version=as_of_version
+            )
+        except Exception as e:
+            logger.error(f"Error in create_relations: {e}")
+            return {
+                "success": False,
+                "error": f"Error creating relations: {str(e)}"
+            }
+        
+        return result
     
     async def handle_tool_call(self, websocket, data: Dict[str, Any], session_data: Dict[str, Any], request_id: Optional[str]):
         """
@@ -728,6 +998,151 @@ class MCPServer:
     def run_stdio_sync(self):
         """Run the MCP server with stdio transport synchronously."""
         asyncio.run(self.run_stdio())
+    
+    async def get_user_memory(self, params: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Tool handler to retrieve user memory.
+        
+        Args:
+            params: Parameters for the tool
+            session_data: Session data including authentication info
+            
+        Returns:
+            Dict containing the user memory information
+        """
+        logger.info(f"Executing get_user_memory tool")
+        
+        # Check authentication
+        if not session_data.get("authenticated", False):
+            return {"success": False, "error": "Not authenticated"}
+        
+        api_key = session_data.get("api_key")
+        if not api_key:
+            return {"success": False, "error": "API key not found in session"}
+        
+        # Get user directory from memory manager
+        user_dir = self.user_memory.get_user_directory(api_key)
+        
+        # Use existing PathRAG to query the ECL system for this directory
+        try:
+            # Create a fresh PathRAG instance
+            fresh_path_rag = PathRAG()
+            
+            # Get observations for this user
+            result = fresh_path_rag.retrieve_paths(
+                query="user memory",
+                context_path=str(user_dir),
+                max_paths=10
+            )
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error retrieving user memory: {e}")
+            return {"success": False, "error": f"Error retrieving user memory: {str(e)}"}
+    
+    async def add_user_observation(self, params: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Tool handler to add a user observation.
+        
+        Args:
+            params: Parameters for the tool including:
+                - observation: The observation text to add
+            session_data: Session data including authentication info
+            
+        Returns:
+            Dict containing the status of the operation
+        """
+        logger.info(f"Executing add_user_observation tool")
+        
+        # Check authentication
+        if not session_data.get("authenticated", False):
+            return {"success": False, "error": "Not authenticated"}
+        
+        api_key = session_data.get("api_key")
+        if not api_key:
+            return {"success": False, "error": "API key not found in session"}
+        
+        observation = params.get("observation")
+        if not observation:
+            return {"success": False, "error": "No observation provided"}
+        
+        success = self.user_memory.add_user_observation(api_key, observation)
+        
+        return {
+            "success": success,
+            "message": "Observation added successfully" if success else "Failed to add observation"
+        }
+    
+    async def create_conversation(self, params: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Tool handler to create a new conversation.
+        
+        Args:
+            params: Parameters for the tool
+            session_data: Session data including authentication info
+            
+        Returns:
+            Dict containing the conversation ID
+        """
+        logger.info(f"Executing create_conversation tool")
+        
+        # Check authentication
+        if not session_data.get("authenticated", False):
+            return {"success": False, "error": "Not authenticated"}
+        
+        api_key = session_data.get("api_key")
+        if not api_key:
+            return {"success": False, "error": "API key not found in session"}
+        
+        conversation_id = self.user_memory.create_conversation(api_key)
+        
+        return {
+            "success": True,
+            "conversation_id": conversation_id
+        }
+    
+    async def add_conversation_message(self, params: Dict[str, Any], session_data: Dict[str, Any]):
+        """
+        Tool handler to add a message to a conversation.
+        
+        Args:
+            params: Parameters for the tool including:
+                - conversation_id: ID of the conversation
+                - role: Role of the message sender (e.g., 'user', 'assistant')
+                - content: Message content
+            session_data: Session data including authentication info
+            
+        Returns:
+            Dict containing the status of the operation
+        """
+        logger.info(f"Executing add_conversation_message tool")
+        
+        # Check authentication
+        if not session_data.get("authenticated", False):
+            return {"success": False, "error": "Not authenticated"}
+        
+        api_key = session_data.get("api_key")
+        if not api_key:
+            return {"success": False, "error": "API key not found in session"}
+        
+        conversation_id = params.get("conversation_id")
+        if not conversation_id:
+            return {"success": False, "error": "No conversation ID provided"}
+        
+        role = params.get("role")
+        if not role:
+            return {"success": False, "error": "No role provided"}
+        
+        content = params.get("content")
+        if not content:
+            return {"success": False, "error": "No content provided"}
+        
+        success = self.user_memory.add_message_to_conversation(api_key, conversation_id, role, content)
+        
+        return {
+            "success": success,
+            "message": "Message added successfully" if success else "Failed to add message"
+        }
 
 # Server instance to be used by other modules
 mcp_server = MCPServer()

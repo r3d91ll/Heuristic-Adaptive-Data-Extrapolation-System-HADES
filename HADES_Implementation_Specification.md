@@ -117,6 +117,21 @@ The ECL component is integrated throughout the implementation phases, with funct
   - **Cross-References**:
     - See [HADES_Architecture_Overview.md](HADES_Architecture_Overview.md) Section 3.6 for ECL details
 
+- **User Memory System**:
+  - **Secure File-Based Storage**:
+    - Uses hashed API keys for user directory separation
+    - Stores observations and conversation histories in structured directories
+    - Monitors system information (users, groups) for context enrichment
+  - **Entity-Relationship Model**:
+    - Represents user memories as typed entities with atomic observations
+    - Creates explicit relationships between memory entities
+    - Supports vector embedding for semantic similarity search
+  - **MCP Server Integration**:
+    - Provides tools for retrieving and adding user memories
+    - Leverages PathRAG for efficient memory retrieval
+  - **Cross-References**:
+    - See [docs/ECL_User_Memory_Implementation.md](docs/ECL_User_Memory_Implementation.md) for detailed implementation plan
+
 - **Version-Controlled Knowledge**:
   - Processes diffs between versions to efficiently update domain representations
   - Generates training data from version changes

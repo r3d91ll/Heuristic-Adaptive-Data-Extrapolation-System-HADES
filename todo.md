@@ -73,6 +73,19 @@
 - [ ] Develop model caching mechanism for performance
 - [ ] Write comprehensive tests for model swapping capabilities
 
+### 4. ECL User Memory Implementation
+- [x] Create user memory documentation ([docs/ECL_User_Memory_Implementation.md](docs/ECL_User_Memory_Implementation.md))
+- [ ] Implement UserMemoryManager class
+- [ ] Create directory structure for user memories
+- [ ] Implement system monitoring components
+- [ ] Add user memory MCP tools
+- [ ] Integrate with PathRAG for memory retrieval
+- [ ] Implement entity extraction from user observations
+- [ ] Create relationship identification between memory entities
+- [ ] Add user memory integration tests
+- [ ] Develop memory access control mechanisms
+- [ ] Implement memory consolidation and optimization
+
 ### 2. Query Tools
 - [ ] Implement "query" tool for natural language queries
 - [ ] Connect to existing orchestrator

@@ -99,6 +99,42 @@ The HADES MCP server exposes the following tools that can be accessed via the `t
      - `as_of_version`: Optional version to query against
    - Returns: Array of retrieved paths formatted as text content
 
+4. **search_entities**: Searches for entities based on a query across names, types, and observations
+   - Arguments:
+     - `query`: The search query to match against entity properties (required)
+     - `domain_filter`: Optional domain filter
+     - `as_of_version`: Optional version to query against
+   - Returns: Array of matching entities with their properties
+
+5. **add_observations**: Adds atomic observations to existing entities
+   - Arguments:
+     - `observations`: Array of observation objects, each containing:
+       - `entity_name`: Name of the target entity (required)
+       - `contents`: Array of observation strings to add (required)
+     - `domain`: Domain to associate with the data (default: "general")
+     - `as_of_version`: Optional version to tag the data with
+   - Returns: Count of added observations and updated entities
+
+6. **create_entities**: Creates new entities in the knowledge graph
+   - Arguments:
+     - `entities`: Array of entity objects, each containing:
+       - `name`: Entity identifier (required)
+       - `entity_type`: Type classification (required)
+       - `observations`: Array of observation strings (optional)
+     - `domain`: Domain to associate with the data (default: "general")
+     - `as_of_version`: Optional version to tag the data with
+   - Returns: Array of created entity IDs and count information
+
+7. **create_relations**: Creates directed relationships between entities
+   - Arguments:
+     - `relations`: Array of relation objects, each containing:
+       - `from`: Source entity name (required)
+       - `to`: Target entity name (required)
+       - `relation_type`: Relationship type in active voice (required)
+     - `domain`: Domain to associate with the data (default: "general")
+     - `as_of_version`: Optional version to tag the data with
+   - Returns: Array of created relation IDs and count information
+
 ## Testing and Verification
 
 ### Test Script
